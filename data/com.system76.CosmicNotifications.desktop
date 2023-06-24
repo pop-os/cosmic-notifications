@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=COSMIC Notifications
+Comment=COSMIC Notifications
+Type=Application
+Exec=cosmic-notifications
+Terminal=false
+Categories=GNOME;GTK;
+Keywords=Gnome;GTK;
+Icon=com.system76.CosmicNotifications
+StartupNotify=true
+X-HostWaylandDisplay=true

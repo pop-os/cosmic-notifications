@@ -1,0 +1,22 @@
+Source: cosmic-notifications
+Section: admin
+Priority: optional
+Maintainer: Ashley Wulber <ashley@system76.com>
+Build-Depends:
+  debhelper (>= 11),
+  debhelper-compat (= 11),
+  rustc (>=1.63),
+  cargo,
+  just,
+  intltool,
+  libxkbcommon-dev,
+  pkg-config,
+Standards-Version: 4.3.0
+Homepage: https://github.com/pop-os/cosmic-notifications
+
+Package: cosmic-notifications
+Architecture: amd64 arm64
+Depends:
+  ${misc:Depends},
+  ${shlibs:Depends}
+Description: Cosmic Notifications

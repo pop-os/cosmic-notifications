@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Ashley Wulber 2019 <ashley@system76.com> -->
+<component type="desktop-application">
+  <id>com.system76.CosmicNotifications</id>
+  <metadata_license>CC0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>COSMIC Notifications</name>
+  <summary>COSMIC Notifications Daemon</summary>
+  <description>
+    <p>The COSMIC Notifications Daemon</p>
+  </description>
+  <url type="homepage">https://github.com/pop-os/cosmic-notifications</url>
+  <url type="bugtracker">https://github.com/pop-os/cosmic-notifications/issues</url>
+  <content_rating type="oars-1.0" />
+  <releases>
+    <release version="0.1.0" date="2023-01-01" />
+  </releases>
+  <kudos>
+    <kudo>ModernToolkit</kudo>
+    <kudo>HiDpiIcon</kudo>
+  </kudos>
+  <developer_name>Ashley Wulber</developer_name>
+  <update_contact>ashley@system76.com</update_contact>
+  <translation type="gettext">cosmic-notifications</translation>
+  <launchable type="desktop-id">com.system76.CosmicNotifications.desktop</launchable>
+</component>
