@@ -216,26 +216,34 @@ impl Notifications {
                 "x" => i32::try_from(v).map(Hint::X).ok(),
                 "y" => i32::try_from(v).map(Hint::Y).ok(),
                 "urgency" => u8::try_from(v).map(Hint::Urgency).ok(),
-                "image-path" | "image_path" => String::try_from(v).ok().and_then(|s| {
-                    if s.starts_with("file://") {
-                        s.strip_prefix("file://").map(|s| {
-                            Hint::Image(cosmic_notifications_util::Image::File(PathBuf::from(s)))
-                        })
-                    } else {
-                        Some(Hint::Image(cosmic_notifications_util::Image::Name(s)))
-                    }
-                }),
+                "image-path" | "image_path" | "app_icon" => {
+                    String::try_from(v).ok().and_then(|s| {
+                        if s.starts_with("file://") {
+                            s.strip_prefix("file://").map(|s| {
+                                Hint::Image(cosmic_notifications_util::Image::File(PathBuf::from(
+                                    s,
+                                )))
+                            })
+                        } else {
+                            Some(Hint::Image(cosmic_notifications_util::Image::Name(s)))
+                        }
+                    })
+                }
                 "image-data" | "image_data" | "icon_data" => match v {
-                    zbus::zvariant::Value::Structure(v) => ImageData::try_from(v)
-                        .map(|mut image| {
+                    zbus::zvariant::Value::Structure(v) => match ImageData::try_from(v) {
+                        Ok(mut image) => Some({
                             image = image.into_rgba();
                             Hint::Image(cosmic_notifications_util::Image::Data {
                                 width: image.width,
                                 height: image.height,
                                 data: image.data,
                             })
-                        })
-                        .ok(),
+                        }),
+                        Err(err) => {
+                            tracing::warn!("Invalid image data: {}", err);
+                            None
+                        }
+                    },
                     _ => {
                         tracing::warn!("Invalid value for hint: {}", k);
                         None
@@ -340,10 +348,11 @@ impl<'a> TryFrom<Structure<'a>> for ImageData {
     type Error = zbus::Error;
 
     fn try_from(value: Structure<'a>) -> zbus::Result<Self> {
-        if Ok(value.full_signature()) != Signature::from_static_str("iiibiiay").as_ref() {
-            return Err(zbus::Error::Failure(
-                "Invalid ImageData: invalid signature".to_string(),
-            ));
+        if Ok(value.full_signature()) != Signature::from_static_str("(iiibiiay)").as_ref() {
+            return Err(zbus::Error::Failure(format!(
+                "Invalid ImageData: invalid signature {}",
+                value.full_signature().to_string()
+            )));
         }
 
         let mut fields = value.into_fields();
@@ -354,13 +363,20 @@ impl<'a> TryFrom<Structure<'a>> for ImageData {
             ));
         }
 
-        let data = Vec::<u8>::try_from(fields.remove(6))?;
-        let channels = i32::try_from(fields.remove(5))?;
-        let bits_per_sample = i32::try_from(fields.remove(4))?;
-        let rowstride = i32::try_from(fields.remove(3))?;
-        let has_alpha = bool::try_from(fields.remove(2))?;
-        let height = i32::try_from(fields.remove(1))?;
-        let width = i32::try_from(fields.remove(0))?;
+        let data = Vec::<u8>::try_from(fields.remove(6))
+            .map_err(|e| zbus::Error::Failure(format!("data: {}", e)))?;
+        let channels = i32::try_from(fields.remove(5))
+            .map_err(|e| zbus::Error::Failure(format!("channels: {}", e)))?;
+        let bits_per_sample = i32::try_from(fields.remove(4))
+            .map_err(|e| zbus::Error::Failure(format!("bits_per_sample: {}", e)))?;
+        let has_alpha = bool::try_from(fields.remove(3))
+            .map_err(|e| zbus::Error::Failure(format!("has_alpha: {}", e)))?;
+        let rowstride = i32::try_from(fields.remove(2))
+            .map_err(|e| zbus::Error::Failure(format!("rowstride: {}", e)))?;
+        let height = i32::try_from(fields.remove(1))
+            .map_err(|e| zbus::Error::Failure(format!("height: {}", e)))?;
+        let width = i32::try_from(fields.remove(0))
+            .map_err(|e| zbus::Error::Failure(format!("width: {}", e)))?;
 
         if width <= 0 {
             return Err(zbus::Error::Failure(
