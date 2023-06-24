@@ -12,7 +12,7 @@ use cosmic::iced::{self, Application, Command, Length, Limits, Subscription};
 use cosmic::iced_runtime::core::window::Id as SurfaceId;
 use cosmic::iced_style::{application, button::StyleSheet};
 use cosmic::iced_widget::{column, row, vertical_space};
-use cosmic::theme::{Button, Container, Text};
+use cosmic::theme::Button;
 use cosmic::widget::{button, icon};
 use cosmic::{settings, Element, Theme};
 use cosmic_notifications_util::{CloseReason, Notification};
