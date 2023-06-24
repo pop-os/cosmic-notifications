@@ -18,6 +18,7 @@ use cosmic::{settings, Element, Theme};
 use cosmic_notifications_util::{CloseReason, Notification};
 use iced::wayland::Appearance;
 use iced::{Alignment, Color};
+use std::borrow::Cow;
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
 use std::time::Duration;
@@ -40,8 +41,6 @@ struct CosmicNotifications {
     theme: Theme,
     tx: Option<mpsc::Sender<notifications::Input>>,
 }
-
-
 
 fn theme() -> Theme {
     let Ok(helper) = cosmic::cosmic_config::Config::new(
@@ -105,7 +104,7 @@ impl CosmicNotifications {
         } else {
             Command::perform(
                 tokio::time::sleep(Duration::from_millis(if timeout < 0 {
-                    timeout.min(60000) as u64
+                    timeout.max(10000) as u64
                 } else {
                     5000
                 })),
@@ -143,7 +142,7 @@ impl CosmicNotifications {
         Command::batch(commands)
     }
 
-    fn replace_notification(&mut self, notification: Notification) {
+    fn replace_notification(&mut self, notification: Notification) -> Command<Message> {
         info!("Replacing notification");
         if let Some(notif) = self
             .active_notifications
@@ -151,7 +150,11 @@ impl CosmicNotifications {
             .find(|n| n.id == notification.id)
         {
             *notif = notification;
+            Command::none()
             // TODO: send to fd
+        } else {
+            tracing::error!("Notification not found... pushing instead");
+            self.push_notification(notification)
         }
     }
 }
@@ -192,25 +195,17 @@ impl Application for CosmicNotifications {
                     return self.push_notification(n);
                 }
                 notifications::Event::Replace(n) => {
-                    self.replace_notification(n);
+                    return self.replace_notification(n);
                 }
                 notifications::Event::CloseNotification(id) => {
-                    if let Some(i) = self
-                        .active_notifications
-                        .iter()
-                        .position(|n| n.id == id)
-                    {
+                    if let Some(i) = self.active_notifications.iter().position(|n| n.id == id) {
                         return self.close(i, CloseReason::CloseNotification);
                     }
                 }
             },
 
             Message::Dismissed(id) => {
-                if let Some(i) = self
-                    .active_notifications
-                    .iter()
-                    .position(|n| n.id == id)
-                {
+                if let Some(i) = self.active_notifications.iter().position(|n| n.id == id) {
                     return self.close(i, CloseReason::Dismissed);
                 }
             }
@@ -220,11 +215,7 @@ impl Application for CosmicNotifications {
                 }
             }
             Message::Timeout(id) => {
-                if let Some(i) = self
-                    .active_notifications
-                    .iter()
-                    .position(|n| n.id == id)
-                {
+                if let Some(i) = self.active_notifications.iter().position(|n| n.id == id) {
                     return self.close(i, CloseReason::Expired);
                 }
             }
@@ -246,7 +237,15 @@ impl Application for CosmicNotifications {
         let mut notifs = Vec::with_capacity(self.active_notifications.len());
 
         for n in &self.active_notifications {
-            let summary = text(&n.summary).size(18);
+            let summary = text(if n.summary.len() > 24 {
+                Cow::from(format!(
+                    "{:.26}...",
+                    n.summary.lines().next().unwrap_or_default()
+                ))
+            } else {
+                Cow::from(&n.summary)
+            })
+            .size(18);
             let urgency = n.urgency();
 
             notifs.push(
@@ -304,7 +303,15 @@ impl Application for CosmicNotifications {
                         }
                         None => row![summary],
                     },
-                    text(&n.body).size(14),
+                    text(if n.body.len() > 38 {
+                        Cow::from(format!(
+                            "{:.40}...",
+                            n.body.lines().next().unwrap_or_default()
+                        ))
+                    } else {
+                        Cow::from(&n.summary)
+                    })
+                    .size(14),
                     horizontal_space(Length::Fixed(300.0)),
                 )
                 .spacing(8)

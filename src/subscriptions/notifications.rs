@@ -182,15 +182,19 @@ impl Notifications {
         hints: HashMap<&str, zbus::zvariant::Value<'_>>,
         expire_timeout: i32,
     ) -> u32 {
-        let id = self.1.get();
-        self.1 = match self.1.checked_add(1) {
-            Some(id) => id,
-            None => {
-                tracing::warn!("Notification ID overflowed");
-                NonZeroU32::new(1).unwrap()
-            }
+        let id = if replaces_id == 0 {
+            let id = self.1;
+            self.1 = match self.1.checked_add(1) {
+                Some(id) => id,
+                None => {
+                    tracing::warn!("Notification ID overflowed");
+                    NonZeroU32::new(1).unwrap()
+                }
+            };
+            id.get()
+        } else {
+            replaces_id
         };
-
         let actions = actions
             .chunks_exact(2)
             .map(|a| (ActionId::from(a[0]), a[1].to_string()))
