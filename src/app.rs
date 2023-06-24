@@ -33,6 +33,7 @@ pub fn run() -> cosmic::iced::Result {
     CosmicNotifications::run(settings)
 }
 
+#[derive(Default)]
 struct CosmicNotifications {
     active_notifications: Vec<Notification>,
     fds: Vec<OwnedFd>,
@@ -40,21 +41,12 @@ struct CosmicNotifications {
     tx: Option<mpsc::Sender<notifications::Input>>,
 }
 
-impl Default for CosmicNotifications {
-    fn default() -> Self {
-        Self {
-            fds: Vec::new(),
-            theme: Theme::default(),
-            tx: None,
-            active_notifications: Vec::new(),
-        }
-    }
-}
+
 
 fn theme() -> Theme {
     let Ok(helper) = cosmic::cosmic_config::Config::new(
         cosmic::cosmic_theme::NAME,
-        cosmic::cosmic_theme::Theme::<CssColor>::version() as u64,
+        cosmic::cosmic_theme::Theme::<CssColor>::version(),
     ) else {
         return cosmic::theme::Theme::dark();
     };
@@ -92,9 +84,9 @@ impl CosmicNotifications {
 
         if self.active_notifications.is_empty() {
             info!("Destroying layer surface");
-            return destroy_layer_surface(WINDOW_ID);
+            destroy_layer_surface(WINDOW_ID)
         } else {
-            return Command::none();
+            Command::none()
         }
     }
 
@@ -105,7 +97,7 @@ impl CosmicNotifications {
             if timeout > 0 {
                 Command::perform(
                     tokio::time::sleep(Duration::from_millis(timeout as u64)),
-                    move |_| Message::Timeout(notification.id as u32),
+                    move |_| Message::Timeout(notification.id),
                 )
             } else {
                 Command::none()
@@ -117,7 +109,7 @@ impl CosmicNotifications {
                 } else {
                     5000
                 })),
-                move |_| Message::Timeout(notification.id as u32),
+                move |_| Message::Timeout(notification.id),
             )
         }];
 
@@ -156,7 +148,7 @@ impl CosmicNotifications {
         if let Some(notif) = self
             .active_notifications
             .iter_mut()
-            .find(|n| n.id == notification.id as u32)
+            .find(|n| n.id == notification.id)
         {
             *notif = notification;
             // TODO: send to fd
@@ -206,7 +198,7 @@ impl Application for CosmicNotifications {
                     if let Some(i) = self
                         .active_notifications
                         .iter()
-                        .position(|n| n.id == id as u32)
+                        .position(|n| n.id == id)
                     {
                         return self.close(i, CloseReason::CloseNotification);
                     }
@@ -217,7 +209,7 @@ impl Application for CosmicNotifications {
                 if let Some(i) = self
                     .active_notifications
                     .iter()
-                    .position(|n| n.id == id as u32)
+                    .position(|n| n.id == id)
                 {
                     return self.close(i, CloseReason::Dismissed);
                 }
@@ -231,7 +223,7 @@ impl Application for CosmicNotifications {
                 if let Some(i) = self
                     .active_notifications
                     .iter()
-                    .position(|n| n.id == id as u32)
+                    .position(|n| n.id == id)
                 {
                     return self.close(i, CloseReason::Expired);
                 }
@@ -339,7 +331,7 @@ impl Application for CosmicNotifications {
                 config_subscription::<u64, cosmic::cosmic_theme::Theme<CssColor>>(
                     0,
                     cosmic::cosmic_theme::NAME.into(),
-                    cosmic::cosmic_theme::Theme::<CssColor>::version() as u64,
+                    cosmic::cosmic_theme::Theme::<CssColor>::version(),
                 )
                 .map(|(_, res)| {
                     let theme = res

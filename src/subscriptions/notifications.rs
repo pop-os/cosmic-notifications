@@ -9,7 +9,7 @@ use cosmic::{
 use cosmic_notifications_util::{ActionId, CloseReason, Hint, Notification};
 use std::{collections::HashMap, fmt::Debug, num::NonZeroU32, path::PathBuf};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tracing::info;
+
 use zbus::{
     dbus_interface,
     zvariant::{Signature, Structure},
@@ -193,26 +193,25 @@ impl Notifications {
 
         let actions = actions
             .chunks_exact(2)
-            .into_iter()
             .map(|a| (ActionId::from(a[0]), a[1].to_string()))
             .collect();
 
         let hints = hints
             .into_iter()
             .filter_map(|(k, v)| match k {
-                "action-icons" => bool::try_from(v).map(|b| Hint::ActionIcons(b)).ok(),
-                "category" => String::try_from(v).map(|s| Hint::Category(s)).ok(),
-                "desktop-entry" => String::try_from(v).map(|s| Hint::DesktopEntry(s)).ok(),
-                "resident" => bool::try_from(v).map(|b| Hint::Resident(b)).ok(),
+                "action-icons" => bool::try_from(v).map(Hint::ActionIcons).ok(),
+                "category" => String::try_from(v).map(Hint::Category).ok(),
+                "desktop-entry" => String::try_from(v).map(Hint::DesktopEntry).ok(),
+                "resident" => bool::try_from(v).map(Hint::Resident).ok(),
                 "sound-file" => String::try_from(v)
                     .map(|s| Hint::SoundFile(PathBuf::from(s)))
                     .ok(),
-                "sound-name" => String::try_from(v).map(|s| Hint::SoundName(s)).ok(),
-                "suppress-sound" => bool::try_from(v).map(|b| Hint::SuppressSound(b)).ok(),
-                "transient" => bool::try_from(v).map(|b| Hint::Transient(b)).ok(),
-                "x" => i32::try_from(v).map(|i| Hint::X(i)).ok(),
-                "y" => i32::try_from(v).map(|i| Hint::Y(i)).ok(),
-                "urgency" => u8::try_from(v).map(|u| Hint::Urgency(u)).ok(),
+                "sound-name" => String::try_from(v).map(Hint::SoundName).ok(),
+                "suppress-sound" => bool::try_from(v).map(Hint::SuppressSound).ok(),
+                "transient" => bool::try_from(v).map(Hint::Transient).ok(),
+                "x" => i32::try_from(v).map(Hint::X).ok(),
+                "y" => i32::try_from(v).map(Hint::Y).ok(),
+                "urgency" => u8::try_from(v).map(Hint::Urgency).ok(),
                 "image-path" | "image_path" => String::try_from(v).ok().and_then(|s| {
                     if s.starts_with("file://") {
                         s.strip_prefix("file://").map(|s| {
