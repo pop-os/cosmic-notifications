@@ -1,5 +1,5 @@
 use crate::config;
-use crate::subscriptions::notifications;
+use crate::subscriptions::{notifications, panel};
 use cosmic::cosmic_config::{config_subscription, CosmicConfigEntry};
 use cosmic::cosmic_theme::util::CssColor;
 use cosmic::iced::wayland::actions::layer_surface::{IcedMargin, SctkLayerSurfaceSettings};
@@ -15,7 +15,7 @@ use cosmic::iced_widget::{column, row, vertical_space};
 use cosmic::theme::Button;
 use cosmic::widget::{button, icon};
 use cosmic::{settings, Element, Theme};
-use cosmic_notifications_util::{CloseReason, Notification};
+use cosmic_notifications_util::{AppletEvent, CloseReason, Notification};
 use iced::wayland::Appearance;
 use iced::{Alignment, Color};
 use std::borrow::Cow;
@@ -24,6 +24,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::info;
+use zbus::export::futures_util::SinkExt;
 
 const WINDOW_ID: SurfaceId = SurfaceId(1);
 
@@ -39,7 +40,8 @@ struct CosmicNotifications {
     active_notifications: Vec<Notification>,
     fds: Vec<OwnedFd>,
     theme: Theme,
-    tx: Option<mpsc::Sender<notifications::Input>>,
+    notifications_tx: Option<mpsc::Sender<notifications::Input>>,
+    panel_tx: Option<mpsc::Sender<panel::Input>>,
 }
 
 fn theme() -> Theme {
@@ -65,6 +67,7 @@ enum Message {
     ActivateNotification(u32),
     Dismissed(u32),
     Notification(notifications::Event),
+    Panel(panel::Event),
     ClosedSurface(SurfaceId),
     Theme(Theme),
     Timeout(u32),
@@ -75,11 +78,9 @@ impl CosmicNotifications {
         info!("Closing notification");
         let notification = self.active_notifications.remove(i);
 
-        if let Some(ref sender) = &self.tx {
+        if let Some(ref sender) = &self.notifications_tx {
             let _res = sender.blocking_send(notifications::Input::Closed(notification.id, reason));
         }
-
-        // TODO: send to fd
 
         if self.active_notifications.is_empty() {
             info!("Destroying layer surface");
@@ -111,6 +112,16 @@ impl CosmicNotifications {
                 move |_| Message::Timeout(notification.id),
             )
         }];
+
+        if let Some(ref sender) = &self.notifications_tx {
+            let sender = sender.clone();
+            let notification = notification.clone();
+            tokio::spawn(async move {
+                sender
+                    .send(notifications::Input::Notification(notification))
+                    .await
+            });
+        }
 
         if self.active_notifications.is_empty() {
             info!("Creating layer surface");
@@ -150,8 +161,16 @@ impl CosmicNotifications {
             .find(|n| n.id == notification.id)
         {
             *notif = notification;
+            if let Some(ref sender) = &self.notifications_tx {
+                let sender = sender.clone();
+                let notification = notif.clone();
+                tokio::spawn(async move {
+                    sender
+                        .send(notifications::Input::Notification(notification))
+                        .await
+                });
+            }
             Command::none()
-            // TODO: send to fd
         } else {
             tracing::error!("Notification not found... pushing instead");
             self.push_notification(notification)
@@ -189,7 +208,7 @@ impl Application for CosmicNotifications {
             Message::ActivateNotification(_) => {}
             Message::Notification(e) => match e {
                 notifications::Event::Ready(tx) => {
-                    self.tx = Some(tx);
+                    self.notifications_tx = Some(tx);
                 }
                 notifications::Event::Notification(n) => {
                     return self.push_notification(n);
@@ -216,8 +235,12 @@ impl Application for CosmicNotifications {
             }
             Message::Timeout(id) => {
                 if let Some(i) = self.active_notifications.iter().position(|n| n.id == id) {
-                    return self.close(i, CloseReason::Expired);
+                    // Note: we want to persist notifications but stop showing them
+                    self.active_notifications.remove(i);
                 }
+            }
+            Message::Panel(panel::Event::Ready(tx)) => {
+                self.panel_tx = Some(tx);
             }
         }
         Command::none()
@@ -352,6 +375,7 @@ impl Application for CosmicNotifications {
                     Message::Theme(cosmic::theme::Theme::custom(Arc::new(theme)))
                 }),
                 notifications::notifications().map(Message::Notification),
+                panel::panel().map(Message::Panel),
             ]
             .into_iter(),
         )

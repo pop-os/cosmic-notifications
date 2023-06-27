@@ -130,7 +130,7 @@ pub enum PanelEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AppletEvent {
     Notification(Notification),
-    CloseNotification(u32, CloseReason),
+    Replace(Notification),
 }
 
 pub const PANEL_NOTIFICATIONS_FD: &'static str = "PANEL_NOTIFICATIONS_FD";
