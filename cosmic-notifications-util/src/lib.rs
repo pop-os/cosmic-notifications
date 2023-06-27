@@ -134,4 +134,4 @@ pub enum AppletEvent {
 }
 
 pub const PANEL_NOTIFICATIONS_FD: &'static str = "PANEL_NOTIFICATIONS_FD";
-pub const DAEMON_NOTIFICATIONS_FD: &'static str = "PANEL_NOTIFICATIONS_FD";
+pub const DAEMON_NOTIFICATIONS_FD: &'static str = "DAEMON_NOTIFICATIONS_FD";
