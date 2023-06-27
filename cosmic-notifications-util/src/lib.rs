@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::{os::fd::RawFd, path::PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Notification {
@@ -106,3 +106,32 @@ pub enum CloseReason {
     CloseNotification = 3,
     Undefined = 4,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PanelRequest {
+    /// A new instance of the panel is running, so the daemon can reset its state
+    Init,
+    NewNotificationsClient {
+        id: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PanelEvent {
+    /// Panel should reset its state because a new instance of the daemon has been started
+    Init,
+    NewNotificationsClient {
+        id: String,
+        write_fd: RawFd,
+        read_fd: RawFd,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AppletEvent {
+    Notification(Notification),
+    CloseNotification(u32, CloseReason),
+}
+
+pub const PANEL_NOTIFICATIONS_FD: &'static str = "PANEL_NOTIFICATIONS_FD";
+pub const DAEMON_NOTIFICATIONS_FD: &'static str = "PANEL_NOTIFICATIONS_FD";

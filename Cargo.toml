@@ -24,6 +24,7 @@ tokio = { version = "1.24.1", features = ["sync", "rt", "tracing"] }
 xdg = "2.4.1"
 zbus = "3.13.1"
 cosmic-notifications-util = { path = "./cosmic-notifications-util" }
+sendfd = "0.4"
 
 [workspace]
 members = ["cosmic-notifications-util"]
