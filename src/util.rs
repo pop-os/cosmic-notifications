@@ -1,8 +1,8 @@
 use anyhow::{bail, Result};
-use cosmic_notifications_util::{PanelEvent, DAEMON_NOTIFICATIONS_FD};
+use cosmic_notifications_util::DAEMON_NOTIFICATIONS_FD;
 use nix::fcntl;
 use std::os::unix::io::{FromRawFd, RawFd};
-use tokio::{io::AsyncWriteExt, net::UnixStream};
+use tokio::net::UnixStream;
 
 pub async fn setup_panel_socket() -> Result<UnixStream> {
     if let Ok(fd_num) = std::env::var(DAEMON_NOTIFICATIONS_FD) {
@@ -14,7 +14,7 @@ pub async fn setup_panel_socket() -> Result<UnixStream> {
                 .and_then(|f| fcntl::fcntl(fd, fcntl::FcntlArg::F_SETFD(f)))?;
 
             let unix_stream = unsafe { std::os::unix::net::UnixStream::from_raw_fd(fd) };
-            let mut unix_stream = UnixStream::from_std(unix_stream)?;
+            let unix_stream: UnixStream = UnixStream::from_std(unix_stream)?;
 
             // XXX first read to end during setup to make sure we have no leftover data after a restart
             let mut buf = [0u8; 1024];
@@ -32,11 +32,6 @@ pub async fn setup_panel_socket() -> Result<UnixStream> {
                     }
                 }
             }
-
-            // send init message
-            let mut data = ron::to_string(&PanelEvent::Init)?;
-            data.push('\n');
-            unix_stream.write_all(data.as_bytes()).await?;
 
             Ok(unix_stream)
         } else {

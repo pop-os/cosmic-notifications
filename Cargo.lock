@@ -711,6 +711,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-stream",
+ "bytemuck",
  "console-subscriber",
  "cosmic-notifications-util",
  "i18n-embed",
@@ -734,6 +735,7 @@ dependencies = [
 name = "cosmic-notifications-util"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "serde",
 ]
 
@@ -3422,6 +3424,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "604b71b8fc267e13bb3023a2c901126c8f349393666a6d98ac1ae5729b701798"
 dependencies = [
  "libc",
+ "tokio",
 ]
 
 [[package]]

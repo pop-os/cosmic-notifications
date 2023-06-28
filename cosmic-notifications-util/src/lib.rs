@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{os::fd::RawFd, path::PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Notification {
@@ -111,21 +111,14 @@ pub enum CloseReason {
 pub enum PanelRequest {
     /// A new instance of the panel is running, so the daemon can reset its state
     Init,
-    NewNotificationsClient {
-        id: String,
-    },
+    /// The panel has a new client for notifications
+    NewNotificationsClient { id: u32 },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum PanelEvent {
-    /// Panel should reset its state because a new instance of the daemon has been started
-    Init,
-    NewNotificationsClient {
-        id: String,
-        write_fd: RawFd,
-        read_fd: RawFd,
-    },
-}
+/// A new file descriptor has been sent to the panel with the given id
+/// No need to ever tell the panel we've restarted, all of the applets will restart
+/// when their Fd is closed and exit with an error that indicates the daemon has restarted
+pub type PanelEvent = u32;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AppletEvent {

@@ -19,12 +19,10 @@ use cosmic_notifications_util::{AppletEvent, CloseReason, Notification};
 use iced::wayland::Appearance;
 use iced::{Alignment, Color};
 use std::borrow::Cow;
-use std::os::fd::OwnedFd;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::info;
-use zbus::export::futures_util::SinkExt;
 
 const WINDOW_ID: SurfaceId = SurfaceId(1);
 
@@ -38,7 +36,6 @@ pub fn run() -> cosmic::iced::Result {
 #[derive(Default)]
 struct CosmicNotifications {
     active_notifications: Vec<Notification>,
-    fds: Vec<OwnedFd>,
     theme: Theme,
     notifications_tx: Option<mpsc::Sender<notifications::Input>>,
     panel_tx: Option<mpsc::Sender<panel::Input>>,
@@ -113,12 +110,14 @@ impl CosmicNotifications {
             )
         }];
 
-        if let Some(ref sender) = &self.notifications_tx {
+        if let Some(ref sender) = &self.panel_tx {
             let sender = sender.clone();
             let notification = notification.clone();
             tokio::spawn(async move {
                 sender
-                    .send(notifications::Input::Notification(notification))
+                    .send(panel::Input::AppletEvent(AppletEvent::Notification(
+                        notification,
+                    )))
                     .await
             });
         }
@@ -161,12 +160,14 @@ impl CosmicNotifications {
             .find(|n| n.id == notification.id)
         {
             *notif = notification;
-            if let Some(ref sender) = &self.notifications_tx {
+            if let Some(ref sender) = &self.panel_tx {
                 let sender = sender.clone();
                 let notification = notif.clone();
                 tokio::spawn(async move {
                     sender
-                        .send(notifications::Input::Notification(notification))
+                        .send(panel::Input::AppletEvent(AppletEvent::Replace(
+                            notification,
+                        )))
                         .await
                 });
             }

@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
+bytemuck = "1.13.1"

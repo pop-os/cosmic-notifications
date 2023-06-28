@@ -7,7 +7,15 @@ use cosmic::{
     iced_futures::Subscription,
 };
 use cosmic_notifications_util::{AppletEvent, PanelRequest};
-use std::{fmt::Debug, num::NonZeroU32};
+use nix::fcntl;
+use sendfd::SendWithFd;
+use std::{
+    fmt::Debug,
+    os::{
+        fd::IntoRawFd,
+        unix::io::{AsRawFd, OwnedFd},
+    },
+};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::UnixStream,
@@ -81,6 +89,7 @@ pub fn panel() -> Subscription<Event> {
                                             tracing::error!("Failed to read line from socket {}", err);
                                             continue;
                                         }
+                                        let s = reader.into_inner();
                                         match ron::de::from_str::<PanelRequest>(request_buf.as_str()) {
                                             Ok(panel_request) => {
                                                 match panel_request {
@@ -88,8 +97,65 @@ pub fn panel() -> Subscription<Event> {
                                                         applets.clear();
                                                     }
                                                     PanelRequest::NewNotificationsClient{ id } => {
-                                                        // todo create new socket, send the fd, and add to applets list
-                                                        // applets.push(applet);
+                                                        let Ok((mine, theirs)) = UnixStream::pair() else {
+                                                            tracing::error!("Failed to create new socket pair");
+                                                            continue;
+                                                        };
+                                                        let Ok(std_stream) = mine
+                                                                .into_std() else {
+                                                                    tracing::error!("Failed to convert new socket to std socket");
+                                                                    continue;
+                                                                };
+                                                        let mine = {
+                                                            if let Err(err) = std_stream
+                                                                .set_nonblocking(false) {
+                                                                    tracing::error!("Failed to mark new socket as blocking {}", err);
+                                                                    continue;
+                                                                }
+                                                            std_stream.as_raw_fd()
+                                                        };
+                                                        // set CLOEXEC
+                                                        let flags = fcntl::fcntl(mine, fcntl::FcntlArg::F_GETFD);
+                                                        if let Err(err) = flags
+                                                            .map(|f: i32| fcntl::FdFlag::from_bits(f).unwrap() | fcntl::FdFlag::FD_CLOEXEC)
+                                                            .and_then(|f| fcntl::fcntl(mine, fcntl::FcntlArg::F_SETFD(f))) {
+                                                                tracing::error!("Failed to set CLOEXEC on new socket {}", err);
+                                                                continue;
+                                                            }
+
+                                                        let theirs = {
+                                                            let Ok(std_stream) = theirs
+                                                                .into_std() else {
+                                                                    tracing::error!("Failed to convert new socket to std socket");
+                                                                    continue;
+                                                                };
+                                                            if let Err(err) = std_stream
+                                                                .set_nonblocking(false) {
+                                                                    tracing::error!("Failed to mark new socket as blocking {}", err);
+                                                                    continue;
+                                                                }
+                                                            OwnedFd::from(std_stream)
+                                                        };
+                                                        // set CLOEXEC
+                                                        let flags = fcntl::fcntl(theirs.as_raw_fd(), fcntl::FcntlArg::F_GETFD);
+                                                        if let Err(err) = flags
+                                                            .map(|f: i32| fcntl::FdFlag::from_bits(f).unwrap() | fcntl::FdFlag::FD_CLOEXEC)
+                                                            .and_then(|f| fcntl::fcntl(theirs.as_raw_fd(), fcntl::FcntlArg::F_SETFD(f))) {
+                                                                tracing::error!("Failed to set CLOEXEC on new socket {}", err);
+                                                                continue;
+                                                            }
+
+                                                        // actually send the fd
+                                                        let msg = id;
+                                                        if let Err(err) = s.send_with_fd(bytemuck::bytes_of(&msg), &[theirs.as_raw_fd()]) {
+                                                            tracing::error!("Failed to send fd to applet {}", err);
+                                                            // XXX their fd is closed here
+                                                        } else if let Ok(mine) = UnixStream::from_std(std_stream) {
+                                                            applets.push(mine);
+                                                            // I don't want to close their Fd if send was successful
+                                                            _ = theirs.into_raw_fd();
+
+                                                        }
                                                     }
                                                 }
                                             }
@@ -136,5 +202,3 @@ pub fn panel() -> Subscription<Event> {
         },
     )
 }
-
-pub struct PanelFd(Sender<Input>, NonZeroU32);
