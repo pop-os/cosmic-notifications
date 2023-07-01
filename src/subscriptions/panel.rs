@@ -21,7 +21,7 @@ use tokio::{
     net::UnixStream,
     sync::mpsc::{channel, Receiver, Sender},
 };
-use tracing::warn;
+use tracing::{info, warn};
 
 #[derive(Debug)]
 pub enum State {
@@ -82,9 +82,10 @@ pub fn panel() -> Subscription<Event> {
                                         new_state = Some(State::Finished);
                                     }
                                     Ok(_) => {
+                                        info!("Socket is readable");
                                         let mut reader = BufReader::new(s);
                                         // todo read messages
-                                        let mut request_buf = String::with_capacity(1024);
+                                        let mut request_buf = String::with_capacity(32);
                                         if let Err(err) = reader.read_line(&mut request_buf).await {
                                             tracing::error!("Failed to read line from socket {}", err);
                                             continue;
@@ -97,44 +98,33 @@ pub fn panel() -> Subscription<Event> {
                                                         applets.clear();
                                                     }
                                                     PanelRequest::NewNotificationsClient{ id } => {
+                                                        info!("New notifications client {}", id);
                                                         let Ok((mine, theirs)) = UnixStream::pair() else {
                                                             tracing::error!("Failed to create new socket pair");
                                                             continue;
                                                         };
-                                                        let Ok(std_stream) = mine
-                                                                .into_std() else {
-                                                                    tracing::error!("Failed to convert new socket to std socket");
-                                                                    continue;
-                                                                };
-                                                        let mine = {
-                                                            if let Err(err) = std_stream
-                                                                .set_nonblocking(false) {
-                                                                    tracing::error!("Failed to mark new socket as blocking {}", err);
-                                                                    continue;
-                                                                }
-                                                            std_stream.as_raw_fd()
+                                                        let Ok(my_std_stream) = mine.into_std() else {
+                                                            tracing::error!("Failed to convert new socket to std socket");
+                                                            continue;
                                                         };
-                                                        // set CLOEXEC
-                                                        let flags = fcntl::fcntl(mine, fcntl::FcntlArg::F_GETFD);
-                                                        if let Err(err) = flags
-                                                            .map(|f: i32| fcntl::FdFlag::from_bits(f).unwrap() | fcntl::FdFlag::FD_CLOEXEC)
-                                                            .and_then(|f| fcntl::fcntl(mine, fcntl::FcntlArg::F_SETFD(f))) {
-                                                                tracing::error!("Failed to set CLOEXEC on new socket {}", err);
-                                                                continue;
-                                                            }
+                                                        if let Err(err) = my_std_stream.set_nonblocking(false) {
+                                                            tracing::error!("Failed to mark new socket as non-blocking {}", err);
+                                                            continue;
+                                                        }
+
 
                                                         let theirs = {
-                                                            let Ok(std_stream) = theirs
+                                                            let Ok(their_std_stream) = theirs
                                                                 .into_std() else {
                                                                     tracing::error!("Failed to convert new socket to std socket");
                                                                     continue;
                                                                 };
-                                                            if let Err(err) = std_stream
+                                                            if let Err(err) = their_std_stream
                                                                 .set_nonblocking(false) {
-                                                                    tracing::error!("Failed to mark new socket as blocking {}", err);
+                                                                    tracing::error!("Failed to mark new socket as non-blocking {}", err);
                                                                     continue;
                                                                 }
-                                                            OwnedFd::from(std_stream)
+                                                            OwnedFd::from(their_std_stream)
                                                         };
                                                         // set CLOEXEC
                                                         let flags = fcntl::fcntl(theirs.as_raw_fd(), fcntl::FcntlArg::F_GETFD);
@@ -149,18 +139,14 @@ pub fn panel() -> Subscription<Event> {
                                                         let msg = id;
                                                         if let Err(err) = s.send_with_fd(bytemuck::bytes_of(&msg), &[theirs.as_raw_fd()]) {
                                                             tracing::error!("Failed to send fd to applet {}", err);
-                                                            // XXX their fd is closed here
-                                                        } else if let Ok(mine) = UnixStream::from_std(std_stream) {
+                                                        } else if let Ok(mine) = UnixStream::from_std(my_std_stream) {
                                                             applets.push(mine);
-                                                            // I don't want to close their Fd if send was successful
-                                                            _ = theirs.into_raw_fd();
-
                                                         }
                                                     }
                                                 }
                                             }
                                             Err(err) => {
-                                                tracing::error!("Failed to deserialize panel request {}", err);
+                                                tracing::error!("Failed to deserialize panel request: {} {}", request_buf.as_str(), err);
                                             }
                                         }
                                     }
