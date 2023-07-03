@@ -113,16 +113,22 @@ pub fn panel() -> Subscription<Event> {
                             match msg {
                                 Input::AppletEvent(e) => {
                                     let Ok(event) = ron::to_string(&e) else {
-                                        error!("Failed to serialize applet event {:?}", e);
+                                        error!("Failed to serialize applet event");
                                         continue;
                                     };
+                                    let event = format!("{}\n", event);
+
                                     for a in applets {
+                                        info!("Sending applet event to applet {}", a.as_raw_fd());
                                         if let Err(err) = a.write_all(event.as_bytes()).await {
                                             error!(
                                                 "Failed to write applet event to socket {}",
                                                 err
                                             );
                                             continue;
+                                        }
+                                        if let Err(err) = a.flush().await {
+                                            error!("Failed to flush socket {}", err);
                                         }
                                     }
                                 }

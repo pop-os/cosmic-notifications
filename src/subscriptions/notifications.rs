@@ -7,6 +7,7 @@ use cosmic::{
     iced_futures::Subscription,
 };
 use cosmic_notifications_util::{ActionId, CloseReason, Hint, Notification};
+use fast_image_resize as fr;
 use std::{collections::HashMap, fmt::Debug, num::NonZeroU32, path::PathBuf};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
@@ -323,7 +324,7 @@ pub struct ImageData {
 
 impl ImageData {
     fn into_rgba(self) -> Self {
-        if self.has_alpha {
+        let rgba = if self.has_alpha {
             self
         } else {
             let mut data = self.data;
@@ -338,8 +339,40 @@ impl ImageData {
                 has_alpha: true,
                 data: new_data,
                 channels: 4,
+                rowstride: self.width as i32 * 4,
                 ..self
             }
+        };
+
+        if rgba.width <= 32 && rgba.height <= 32 {
+            return rgba;
+        }
+        let mut src = fr::Image::from_vec_u8(
+            NonZeroU32::try_from(rgba.width).unwrap(),
+            NonZeroU32::try_from(rgba.height).unwrap(),
+            rgba.data,
+            fr::PixelType::U8x4,
+        )
+        .unwrap();
+        // Multiple RGB channels of source image by alpha channel
+        // (not required for the Nearest algorithm)
+        let alpha_mul_div = fr::MulDiv::default();
+        alpha_mul_div
+            .multiply_alpha_inplace(&mut src.view_mut())
+            .unwrap();
+        let dst_width = NonZeroU32::try_from(rgba.width.min(32)).unwrap();
+        let dst_height = NonZeroU32::try_from(rgba.height.min(32)).unwrap();
+        let mut dst = fr::Image::new(dst_width, dst_height, fr::PixelType::U8x4);
+        let mut dst_view = dst.view_mut();
+        let mut resizer = fr::Resizer::new(fr::ResizeAlg::Convolution(fr::FilterType::Lanczos3));
+        resizer.resize(&src.view(), &mut dst_view).unwrap();
+        alpha_mul_div.divide_alpha_inplace(&mut dst_view).unwrap();
+
+        Self {
+            width: dst.width().get(),
+            height: dst.height().get(),
+            data: dst.into_vec(),
+            ..rgba
         }
     }
 }

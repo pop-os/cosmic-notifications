@@ -124,6 +124,7 @@ pub type PanelEvent = u32;
 pub enum AppletEvent {
     Notification(Notification),
     Replace(Notification),
+    Closed(u32),
 }
 
 pub const PANEL_NOTIFICATIONS_FD: &'static str = "PANEL_NOTIFICATIONS_FD";

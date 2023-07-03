@@ -23,7 +23,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tracing::info;
+use tracing::{info, warn};
 
 const WINDOW_ID: SurfaceId = SurfaceId(1);
 
@@ -36,6 +36,7 @@ pub fn run() -> cosmic::iced::Result {
 
 #[derive(Default)]
 struct CosmicNotifications {
+    active_surface: bool,
     active_notifications: Vec<Notification>,
     theme: Theme,
     notifications_tx: Option<mpsc::Sender<notifications::Input>>,
@@ -74,15 +75,39 @@ enum Message {
 }
 
 impl CosmicNotifications {
-    fn close(&mut self, i: usize, reason: CloseReason) -> Command<Message> {
+    fn close(&mut self, i: u32, reason: CloseReason) -> Command<Message> {
+        let Some(i) = self
+            .active_notifications
+            .iter()
+            .position(|n| n.id == i) else {
+                warn!("Notification not found for id {i}");
+            return Command::none();
+        };
         info!("Closing notification");
         let notification = self.active_notifications.remove(i);
 
         if let Some(ref sender) = &self.notifications_tx {
-            let _res = sender.blocking_send(notifications::Input::Closed(notification.id, reason));
+            if !matches!(reason, CloseReason::Expired) {
+                let id = notification.id;
+                let sender = sender.clone();
+                tokio::spawn(async move {
+                    let _ = sender.send(notifications::Input::Closed(id, reason));
+                });
+            }
         }
 
-        if self.active_notifications.is_empty() {
+        if let Some(ref sender) = &self.panel_tx {
+            let sender = sender.clone();
+            let id = notification.id;
+            tokio::spawn(async move {
+                sender
+                    .send(panel::Input::AppletEvent(AppletEvent::Closed(id)))
+                    .await
+            });
+        }
+
+        if self.active_notifications.is_empty() && self.active_surface {
+            self.active_surface = false;
             info!("Destroying layer surface");
             destroy_layer_surface(WINDOW_ID)
         } else {
@@ -127,6 +152,7 @@ impl CosmicNotifications {
 
         if self.active_notifications.is_empty() && !self.config.do_not_disturb {
             info!("Creating layer surface");
+            self.active_surface = true;
             commands.push(get_layer_surface(SctkLayerSurfaceSettings {
                 id: WINDOW_ID,
                 anchor: Anchor::TOP,
@@ -239,28 +265,17 @@ impl Application for CosmicNotifications {
                     return self.replace_notification(n);
                 }
                 notifications::Event::CloseNotification(id) => {
-                    if let Some(i) = self.active_notifications.iter().position(|n| n.id == id) {
-                        return self.close(i, CloseReason::CloseNotification);
-                    }
+                    return self.close(id, CloseReason::CloseNotification)
                 }
             },
 
-            Message::Dismissed(id) => {
-                if let Some(i) = self.active_notifications.iter().position(|n| n.id == id) {
-                    return self.close(i, CloseReason::Dismissed);
-                }
-            }
+            Message::Dismissed(id) => return self.close(id, CloseReason::Dismissed),
             Message::ClosedSurface(id) => {
                 if id == WINDOW_ID {
                     self.active_notifications.clear();
                 }
             }
-            Message::Timeout(id) => {
-                if let Some(i) = self.active_notifications.iter().position(|n| n.id == id) {
-                    // Note: we want to persist notifications but stop showing them
-                    self.active_notifications.remove(i);
-                }
-            }
+            Message::Timeout(id) => return self.close(id, CloseReason::Expired),
             Message::Panel(panel::Event::Ready(tx)) => {
                 self.panel_tx = Some(tx);
             }
@@ -362,6 +377,7 @@ impl Application for CosmicNotifications {
                     .size(14),
                     horizontal_space(Length::Fixed(300.0)),
                 )
+                .padding(8.0)
                 .spacing(8)
                 .into()])
                 .on_press(Message::Dismissed(n.id))

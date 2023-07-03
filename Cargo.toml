@@ -29,6 +29,7 @@ cosmic-notifications-config = { path = "./cosmic-notifications-config" }
 sendfd = { version = "0.4", features = ["tokio"] }
 bytemuck = "1.13.1"
 log-panics = { version = "2", features = ["with-backtrace"] }
+fast_image_resize = "2.7.3"
 
 [workspace]
 members = ["cosmic-notifications-util", "cosmic-notifications-config"]
