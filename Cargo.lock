@@ -717,6 +717,7 @@ dependencies = [
  "i18n-embed",
  "i18n-embed-fl",
  "libcosmic",
+ "log-panics",
  "nix 0.26.2",
  "once_cell",
  "ron",
@@ -726,9 +727,18 @@ dependencies = [
  "shlex",
  "tokio",
  "tracing",
+ "tracing-journald",
  "tracing-subscriber",
  "xdg",
  "zbus",
+]
+
+[[package]]
+name = "cosmic-notifications-config"
+version = "0.1.0"
+dependencies = [
+ "cosmic-config",
+ "serde",
 ]
 
 [[package]]
@@ -2311,6 +2321,16 @@ name = "log"
 version = "0.4.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b06a4cde4c0f271a446782e3eff8de789548ce57dbc8eca9292c27f4a42004b4"
+
+[[package]]
+name = "log-panics"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68f9dd8546191c1850ecf67d22f5ff00a935b890d0e84713159a55495cc2ac5f"
+dependencies = [
+ "backtrace",
+ "log",
+]
 
 [[package]]
 name = "lru"
@@ -4085,6 +4105,17 @@ checksum = "0955b8137a1df6f1a2e9a37d8a6656291ff0297c1a97c24e0d8425fe2312f79a"
 dependencies = [
  "once_cell",
  "valuable",
+]
+
+[[package]]
+name = "tracing-journald"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba316a74e8fc3c3896a850dba2375928a9fa171b085ecddfc7c054d39970f3fd"
+dependencies = [
+ "libc",
+ "tracing-core",
+ "tracing-subscriber",
 ]
 
 [[package]]
