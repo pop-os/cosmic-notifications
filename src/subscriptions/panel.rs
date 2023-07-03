@@ -19,7 +19,7 @@ use tokio::{
     sync::mpsc::{channel, Receiver, Sender},
     task::JoinHandle,
 };
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 #[derive(Debug)]
 pub enum State {
@@ -86,11 +86,20 @@ pub fn panel() -> Subscription<Event> {
                                     }
                                 });
 
-                                // We are ready to receive messages
-                                state = State::Waiting(write, Vec::new(), rx, jh);
+                                if let Err(err) = output.send(Event::Ready(tx)).await {
+                                    error!(
+                                        "Failed to send ready event for the panel subscription {}",
+                                        err
+                                    );
+                                    jh.abort();
+                                    state = State::Finished;
+                                } else {
+                                    // We are ready to receive messages
+                                    state = State::Waiting(write, Vec::new(), rx, jh);
+                                }
                             }
                             Err(err) => {
-                                tracing::error!(
+                                error!(
                                     "Failed to connect to the socket for the panel server {}",
                                     err
                                 );
@@ -104,12 +113,12 @@ pub fn panel() -> Subscription<Event> {
                             match msg {
                                 Input::AppletEvent(e) => {
                                     let Ok(event) = ron::to_string(&e) else {
-                                        tracing::error!("Failed to serialize applet event {:?}", e);
+                                        error!("Failed to serialize applet event {:?}", e);
                                         continue;
                                     };
                                     for a in applets {
                                         if let Err(err) = a.write_all(event.as_bytes()).await {
-                                            tracing::error!(
+                                            error!(
                                                 "Failed to write applet event to socket {}",
                                                 err
                                             );
@@ -125,15 +134,15 @@ pub fn panel() -> Subscription<Event> {
                                         PanelRequest::NewNotificationsClient { id } => {
                                             info!("New notifications client {}", id);
                                             let Ok((mine, theirs)) = UnixStream::pair() else {
-                                                                            tracing::error!("Failed to create new socket pair");
+                                                                            error!("Failed to create new socket pair");
                                                                             continue;
                                                                         };
                                             let Ok(my_std_stream) = mine.into_std() else {
-                                                                            tracing::error!("Failed to convert new socket to std socket");
+                                                                            error!("Failed to convert new socket to std socket");
                                                                             continue;
                                                                         };
                                             if let Err(err) = my_std_stream.set_nonblocking(false) {
-                                                tracing::error!(
+                                                error!(
                                                     "Failed to mark new socket as non-blocking {}",
                                                     err
                                                 );
@@ -143,13 +152,13 @@ pub fn panel() -> Subscription<Event> {
                                             let theirs = {
                                                 let Ok(their_std_stream) = theirs
                                                                                 .into_std() else {
-                                                                                    tracing::error!("Failed to convert new socket to std socket");
+                                                                                    error!("Failed to convert new socket to std socket");
                                                                                     continue;
                                                                                 };
                                                 if let Err(err) =
                                                     their_std_stream.set_nonblocking(false)
                                                 {
-                                                    tracing::error!("Failed to mark new socket as non-blocking {}", err);
+                                                    error!("Failed to mark new socket as non-blocking {}", err);
                                                     continue;
                                                 }
                                                 OwnedFd::from(their_std_stream)
@@ -171,7 +180,7 @@ pub fn panel() -> Subscription<Event> {
                                                     )
                                                 })
                                             {
-                                                tracing::error!(
+                                                error!(
                                                     "Failed to set CLOEXEC on new socket {}",
                                                     err
                                                 );
@@ -189,10 +198,7 @@ pub fn panel() -> Subscription<Event> {
                                                 bytemuck::bytes_of(&msg),
                                                 &[theirs.as_raw_fd()],
                                             ) {
-                                                tracing::error!(
-                                                    "Failed to send fd to applet {}",
-                                                    err
-                                                );
+                                                error!("Failed to send fd to applet {}", err);
                                             } else if let Ok(mine) =
                                                 UnixStream::from_std(my_std_stream)
                                             {
