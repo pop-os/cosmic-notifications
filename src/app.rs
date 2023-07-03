@@ -83,7 +83,7 @@ impl CosmicNotifications {
                 warn!("Notification not found for id {i}");
             return Command::none();
         };
-        info!("Closing notification");
+
         let notification = self.active_notifications.remove(i);
 
         if let Some(ref sender) = &self.notifications_tx {
@@ -97,13 +97,15 @@ impl CosmicNotifications {
         }
 
         if let Some(ref sender) = &self.panel_tx {
-            let sender = sender.clone();
-            let id = notification.id;
-            tokio::spawn(async move {
-                sender
-                    .send(panel::Input::AppletEvent(AppletEvent::Closed(id)))
-                    .await
-            });
+            if !matches!(reason, CloseReason::Expired) {
+                let sender = sender.clone();
+                let id = notification.id;
+                tokio::spawn(async move {
+                    sender
+                        .send(panel::Input::AppletEvent(AppletEvent::Closed(id)))
+                        .await
+                });
+            }
         }
 
         if self.active_notifications.is_empty() && self.active_surface {
