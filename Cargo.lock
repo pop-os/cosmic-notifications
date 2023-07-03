@@ -713,6 +713,7 @@ dependencies = [
  "async-stream",
  "bytemuck",
  "console-subscriber",
+ "cosmic-notifications-config",
  "cosmic-notifications-util",
  "i18n-embed",
  "i18n-embed-fl",

@@ -1,6 +1,6 @@
 use crate::config;
 use crate::subscriptions::{notifications, panel};
-use cosmic::cosmic_config::{config_subscription, CosmicConfigEntry};
+use cosmic::cosmic_config::{config_subscription, Config, CosmicConfigEntry};
 use cosmic::cosmic_theme::util::CssColor;
 use cosmic::iced::wayland::actions::layer_surface::{IcedMargin, SctkLayerSurfaceSettings};
 use cosmic::iced::wayland::layer_surface::{
@@ -15,6 +15,7 @@ use cosmic::iced_widget::{column, row, vertical_space};
 use cosmic::theme::Button;
 use cosmic::widget::{button, icon};
 use cosmic::{settings, Element, Theme};
+use cosmic_notifications_config::NotificationsConfig;
 use cosmic_notifications_util::{AppletEvent, CloseReason, Notification};
 use iced::wayland::Appearance;
 use iced::{Alignment, Color};
@@ -39,6 +40,7 @@ struct CosmicNotifications {
     theme: Theme,
     notifications_tx: Option<mpsc::Sender<notifications::Input>>,
     panel_tx: Option<mpsc::Sender<panel::Input>>,
+    config: NotificationsConfig,
 }
 
 fn theme() -> Theme {
@@ -68,6 +70,7 @@ enum Message {
     ClosedSurface(SurfaceId),
     Theme(Theme),
     Timeout(u32),
+    Config(NotificationsConfig),
 }
 
 impl CosmicNotifications {
@@ -186,9 +189,27 @@ impl Application for CosmicNotifications {
     type Flags = ();
 
     fn new(_flags: ()) -> (Self, Command<Message>) {
+        let helper = Config::new(
+            cosmic_notifications_config::ID,
+            NotificationsConfig::version(),
+        )
+        .ok();
+
+        let config: NotificationsConfig = helper
+            .as_ref()
+            .map(|helper| {
+                NotificationsConfig::get_entry(helper).unwrap_or_else(|(errors, config)| {
+                    for err in errors {
+                        tracing::error!("{:?}", err);
+                    }
+                    config
+                })
+            })
+            .unwrap_or_default();
         (
             CosmicNotifications {
                 theme: theme(),
+                config,
                 ..Default::default()
             },
             Command::none(),
@@ -242,6 +263,9 @@ impl Application for CosmicNotifications {
             }
             Message::Panel(panel::Event::Ready(tx)) => {
                 self.panel_tx = Some(tx);
+            }
+            Message::Config(config) => {
+                self.config = config;
             }
         }
         Command::none()
@@ -374,6 +398,20 @@ impl Application for CosmicNotifications {
                             theme.into_srgba()
                         });
                     Message::Theme(cosmic::theme::Theme::custom(Arc::new(theme)))
+                }),
+                config_subscription::<u64, NotificationsConfig>(
+                    0,
+                    cosmic_notifications_config::ID.into(),
+                    NotificationsConfig::version(),
+                )
+                .map(|(_, res)| match res {
+                    Ok(config) => Message::Config(config),
+                    Err((errors, config)) => {
+                        for err in errors {
+                            tracing::error!("{:?}", err);
+                        }
+                        Message::Config(config)
+                    }
                 }),
                 notifications::notifications().map(Message::Notification),
                 panel::panel().map(Message::Panel),

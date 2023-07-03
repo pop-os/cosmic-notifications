@@ -25,6 +25,7 @@ tokio = { version = "1.24.1", features = ["sync", "rt", "tracing", "macros", "ne
 xdg = "2.4.1"
 zbus = "3.13.1"
 cosmic-notifications-util = { path = "./cosmic-notifications-util" }
+cosmic-notifications-config = { path = "./cosmic-notifications-config" }
 sendfd = { version = "0.4", features = ["tokio"] }
 bytemuck = "1.13.1"
 log-panics = { version = "2", features = ["with-backtrace"] }
