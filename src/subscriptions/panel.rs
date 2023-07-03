@@ -11,28 +11,32 @@ use nix::fcntl;
 use sendfd::SendWithFd;
 use std::{
     fmt::Debug,
-    os::{
-        fd::IntoRawFd,
-        unix::io::{AsRawFd, OwnedFd},
-    },
+    os::unix::io::{AsRawFd, OwnedFd},
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net::UnixStream,
+    net::{unix::OwnedWriteHalf, UnixStream},
     sync::mpsc::{channel, Receiver, Sender},
+    task::JoinHandle,
 };
 use tracing::{info, warn};
 
 #[derive(Debug)]
 pub enum State {
     Starting,
-    Waiting(UnixStream, Vec<UnixStream>, Receiver<Input>),
+    Waiting(
+        OwnedWriteHalf,
+        Vec<UnixStream>,
+        Receiver<Input>,
+        JoinHandle<()>,
+    ),
     Finished,
 }
 
 #[derive(Debug, Clone)]
 pub enum Input {
     AppletEvent(AppletEvent),
+    PanelRequest(PanelRequest),
 }
 
 #[derive(Debug, Clone)]
@@ -56,11 +60,34 @@ pub fn panel() -> Subscription<Event> {
                         let (tx, rx) = channel(100);
                         match util::setup_panel_socket().await {
                             Ok(s) => {
-                                // Send the sender back to the application
-                                _ = output.send(Event::Ready(tx)).await;
+                                let (read, write) = s.into_split();
+                                let tx_clone = tx.clone();
+                                let jh = tokio::spawn(async move {
+                                    let reader: BufReader<tokio::net::unix::OwnedReadHalf> =
+                                        BufReader::new(read);
+                                    let mut lines = reader.lines();
+                                    while let Ok(Some(line)) = lines.next_line().await {
+                                        info!("Received line {}", line);
+                                        match ron::de::from_str::<PanelRequest>(line.as_str()) {
+                                            Ok(event) => {
+                                                if let Err(err) =
+                                                    tx_clone.send(Input::PanelRequest(event)).await
+                                                {
+                                                    warn!("Failed to pass panel request {}", err);
+                                                }
+                                            }
+                                            Err(err) => {
+                                                warn!(
+                                                    "Failed to deserialize panel request: {} {}",
+                                                    line, err
+                                                );
+                                            }
+                                        }
+                                    }
+                                });
 
                                 // We are ready to receive messages
-                                state = State::Waiting(s, Vec::new(), rx);
+                                state = State::Waiting(write, Vec::new(), rx, jh);
                             }
                             Err(err) => {
                                 tracing::error!(
@@ -71,113 +98,114 @@ pub fn panel() -> Subscription<Event> {
                             }
                         }
                     }
-                    State::Waiting(s, applets, rx) => {
+                    State::Waiting(s, applets, rx, jh) => {
                         // Wait for a message or for fd to be readable or we get an input
-                        let new_state = tokio::select! {
-                            res = s.readable() => {
-                                let mut new_state = None;
-                                match res {
-                                    Err(err) => {
-                                        tracing::error!("Failed to wait for socket to be readable {}", err);
-                                        new_state = Some(State::Finished);
-                                    }
-                                    Ok(_) => {
-                                        info!("Socket is readable");
-                                        let mut reader = BufReader::new(s);
-                                        // todo read messages
-                                        let mut request_buf = String::with_capacity(32);
-                                        if let Err(err) = reader.read_line(&mut request_buf).await {
-                                            tracing::error!("Failed to read line from socket {}", err);
+                        if let Some(msg) = rx.recv().await {
+                            match msg {
+                                Input::AppletEvent(e) => {
+                                    let Ok(event) = ron::to_string(&e) else {
+                                        tracing::error!("Failed to serialize applet event {:?}", e);
+                                        continue;
+                                    };
+                                    for a in applets {
+                                        if let Err(err) = a.write_all(event.as_bytes()).await {
+                                            tracing::error!(
+                                                "Failed to write applet event to socket {}",
+                                                err
+                                            );
                                             continue;
                                         }
-                                        let s = reader.into_inner();
-                                        match ron::de::from_str::<PanelRequest>(request_buf.as_str()) {
-                                            Ok(panel_request) => {
-                                                match panel_request {
-                                                    PanelRequest::Init => {
-                                                        applets.clear();
-                                                    }
-                                                    PanelRequest::NewNotificationsClient{ id } => {
-                                                        info!("New notifications client {}", id);
-                                                        let Ok((mine, theirs)) = UnixStream::pair() else {
-                                                            tracing::error!("Failed to create new socket pair");
-                                                            continue;
-                                                        };
-                                                        let Ok(my_std_stream) = mine.into_std() else {
-                                                            tracing::error!("Failed to convert new socket to std socket");
-                                                            continue;
-                                                        };
-                                                        if let Err(err) = my_std_stream.set_nonblocking(false) {
-                                                            tracing::error!("Failed to mark new socket as non-blocking {}", err);
-                                                            continue;
-                                                        }
-
-
-                                                        let theirs = {
-                                                            let Ok(their_std_stream) = theirs
-                                                                .into_std() else {
-                                                                    tracing::error!("Failed to convert new socket to std socket");
-                                                                    continue;
-                                                                };
-                                                            if let Err(err) = their_std_stream
-                                                                .set_nonblocking(false) {
-                                                                    tracing::error!("Failed to mark new socket as non-blocking {}", err);
-                                                                    continue;
-                                                                }
-                                                            OwnedFd::from(their_std_stream)
-                                                        };
-                                                        // set CLOEXEC
-                                                        let flags = fcntl::fcntl(theirs.as_raw_fd(), fcntl::FcntlArg::F_GETFD);
-                                                        if let Err(err) = flags
-                                                            .map(|f: i32| fcntl::FdFlag::from_bits(f).unwrap() | fcntl::FdFlag::FD_CLOEXEC)
-                                                            .and_then(|f| fcntl::fcntl(theirs.as_raw_fd(), fcntl::FcntlArg::F_SETFD(f))) {
-                                                                tracing::error!("Failed to set CLOEXEC on new socket {}", err);
-                                                                continue;
-                                                            }
-
-                                                        // actually send the fd
-                                                        let msg = id;
-                                                        if let Err(err) = s.send_with_fd(bytemuck::bytes_of(&msg), &[theirs.as_raw_fd()]) {
-                                                            tracing::error!("Failed to send fd to applet {}", err);
-                                                        } else if let Ok(mine) = UnixStream::from_std(my_std_stream) {
-                                                            applets.push(mine);
-                                                        }
-                                                    }
-                                                }
+                                    }
+                                }
+                                Input::PanelRequest(e) => {
+                                    match e {
+                                        PanelRequest::Init => {
+                                            applets.clear();
+                                        }
+                                        PanelRequest::NewNotificationsClient { id } => {
+                                            info!("New notifications client {}", id);
+                                            let Ok((mine, theirs)) = UnixStream::pair() else {
+                                                                            tracing::error!("Failed to create new socket pair");
+                                                                            continue;
+                                                                        };
+                                            let Ok(my_std_stream) = mine.into_std() else {
+                                                                            tracing::error!("Failed to convert new socket to std socket");
+                                                                            continue;
+                                                                        };
+                                            if let Err(err) = my_std_stream.set_nonblocking(false) {
+                                                tracing::error!(
+                                                    "Failed to mark new socket as non-blocking {}",
+                                                    err
+                                                );
+                                                continue;
                                             }
-                                            Err(err) => {
-                                                tracing::error!("Failed to deserialize panel request: {} {}", request_buf.as_str(), err);
+
+                                            let theirs = {
+                                                let Ok(their_std_stream) = theirs
+                                                                                .into_std() else {
+                                                                                    tracing::error!("Failed to convert new socket to std socket");
+                                                                                    continue;
+                                                                                };
+                                                if let Err(err) =
+                                                    their_std_stream.set_nonblocking(false)
+                                                {
+                                                    tracing::error!("Failed to mark new socket as non-blocking {}", err);
+                                                    continue;
+                                                }
+                                                OwnedFd::from(their_std_stream)
+                                            };
+                                            // set CLOEXEC
+                                            let flags = fcntl::fcntl(
+                                                theirs.as_raw_fd(),
+                                                fcntl::FcntlArg::F_GETFD,
+                                            );
+                                            if let Err(err) = flags
+                                                .map(|f: i32| {
+                                                    fcntl::FdFlag::from_bits(f).unwrap()
+                                                        | fcntl::FdFlag::FD_CLOEXEC
+                                                })
+                                                .and_then(|f| {
+                                                    fcntl::fcntl(
+                                                        theirs.as_raw_fd(),
+                                                        fcntl::FcntlArg::F_SETFD(f),
+                                                    )
+                                                })
+                                            {
+                                                tracing::error!(
+                                                    "Failed to set CLOEXEC on new socket {}",
+                                                    err
+                                                );
+                                                continue;
+                                            }
+
+                                            // actually send the fd
+                                            info!("Waiting for socket to be writable");
+                                            let msg = id;
+                                            let _ = s.writable().await;
+                                            let stream = s.as_ref();
+                                            info!("Sending fd to {}", id);
+
+                                            if let Err(err) = stream.send_with_fd(
+                                                bytemuck::bytes_of(&msg),
+                                                &[theirs.as_raw_fd()],
+                                            ) {
+                                                tracing::error!(
+                                                    "Failed to send fd to applet {}",
+                                                    err
+                                                );
+                                            } else if let Ok(mine) =
+                                                UnixStream::from_std(my_std_stream)
+                                            {
+                                                applets.push(mine);
                                             }
                                         }
                                     }
                                 }
-                                new_state
-                            },
-                            v = rx.recv() => {
-                                let mut new_state = None;
-                                match v {
-                                   Some(Input::AppletEvent(e)) => {
-                                        let Ok(event) = ron::to_string(&e) else {
-                                            tracing::error!("Failed to serialize applet event {:?}", e);
-                                            continue;
-                                        };
-                                        for a in applets {
-                                            if let Err(err) = a.write_all(event.as_bytes()).await {
-                                                tracing::error!("Failed to write applet event to socket {}", err);
-                                                continue;
-                                            }
-                                        }
-                                    }
-                                    _ => {
-                                        new_state = Some(State::Finished);
-                                        warn!("Channel for messages to applets was closed");
-                                    }
-                                };
-                                new_state
-                            },
-                        };
-                        if let Some(new_state) = new_state {
-                            state = new_state;
+                            }
+                        } else {
+                            jh.abort();
+                            state = State::Finished;
+                            warn!("Channel for messages to applets was closed");
                         }
                     }
                     State::Finished => {

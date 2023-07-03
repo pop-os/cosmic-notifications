@@ -125,7 +125,7 @@ impl CosmicNotifications {
             });
         }
 
-        if self.active_notifications.is_empty() {
+        if self.active_notifications.is_empty() && !self.config.do_not_disturb {
             info!("Creating layer surface");
             commands.push(get_layer_surface(SctkLayerSurfaceSettings {
                 id: WINDOW_ID,

@@ -11,7 +11,8 @@ use localize::localize;
 
 use crate::config::VERSION;
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(tracing_journald::layer()?)
         .with(fmt::layer())
