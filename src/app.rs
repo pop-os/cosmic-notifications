@@ -377,7 +377,8 @@ impl Application for CosmicNotifications {
                     } else {
                         Cow::from(&n.summary)
                     })
-                    .size(14),
+                    .size(14)
+                    .width(Length::Fixed(300.0)),
                     text(if n.body.len() > 77 {
                         Cow::from(format!(
                             "{:.80}...",
@@ -386,8 +387,8 @@ impl Application for CosmicNotifications {
                     } else {
                         Cow::from(&n.body)
                     })
-                    .size(12),
-                    horizontal_space(Length::Fixed(300.0)),
+                    .size(12)
+                    .width(Length::Fixed(300.0)),
                 )
                 .spacing(8)
                 .into()])
