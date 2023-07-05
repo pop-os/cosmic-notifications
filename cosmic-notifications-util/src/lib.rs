@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::{path::PathBuf, time::SystemTime};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Notification {
@@ -11,6 +11,7 @@ pub struct Notification {
     pub actions: Vec<(ActionId, String)>,
     pub hints: Vec<Hint>,
     pub expire_timeout: i32,
+    pub time: SystemTime,
 }
 
 impl Notification {
@@ -49,6 +50,10 @@ impl Notification {
             Hint::Image(i) => Some(i),
             _ => None,
         })
+    }
+
+    pub fn duration_since(&self) -> Option<std::time::Duration> {
+        self.time.duration_since(SystemTime::now()).ok()
     }
 }
 

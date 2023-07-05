@@ -8,7 +8,7 @@ use cosmic::{
 };
 use cosmic_notifications_util::{ActionId, CloseReason, Hint, Notification};
 use fast_image_resize as fr;
-use std::{collections::HashMap, fmt::Debug, num::NonZeroU32, path::PathBuf};
+use std::{collections::HashMap, fmt::Debug, num::NonZeroU32, path::PathBuf, time::SystemTime};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 use zbus::{
@@ -266,6 +266,7 @@ impl Notifications {
             actions,
             hints,
             expire_timeout,
+            time: SystemTime::now(),
         };
 
         if let Err(err) = self
@@ -344,7 +345,7 @@ impl ImageData {
             }
         };
 
-        if rgba.width <= 32 && rgba.height <= 32 {
+        if rgba.width <= 16 && rgba.height <= 16 {
             return rgba;
         }
         let mut src = fr::Image::from_vec_u8(
@@ -360,8 +361,8 @@ impl ImageData {
         alpha_mul_div
             .multiply_alpha_inplace(&mut src.view_mut())
             .unwrap();
-        let dst_width = NonZeroU32::try_from(rgba.width.min(32)).unwrap();
-        let dst_height = NonZeroU32::try_from(rgba.height.min(32)).unwrap();
+        let dst_width = NonZeroU32::try_from(rgba.width.min(16)).unwrap();
+        let dst_height = NonZeroU32::try_from(rgba.height.min(16)).unwrap();
         let mut dst = fr::Image::new(dst_width, dst_height, fr::PixelType::U8x4);
         let mut dst_view = dst.view_mut();
         let mut resizer = fr::Resizer::new(fr::ResizeAlg::Convolution(fr::FilterType::Lanczos3));

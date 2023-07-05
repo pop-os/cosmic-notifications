@@ -1,5 +1,5 @@
-use crate::config;
 use crate::subscriptions::{notifications, panel};
+use crate::{config, fl};
 use cosmic::cosmic_config::{config_subscription, Config, CosmicConfigEntry};
 use cosmic::cosmic_theme::util::CssColor;
 use cosmic::iced::wayland::actions::layer_surface::{IcedMargin, SctkLayerSurfaceSettings};
@@ -13,13 +13,14 @@ use cosmic::iced_runtime::core::window::Id as SurfaceId;
 use cosmic::iced_style::{application, button::StyleSheet};
 use cosmic::iced_widget::{column, row, vertical_space};
 use cosmic::theme::Button;
-use cosmic::widget::{button, icon};
+use cosmic::widget::icon;
 use cosmic::{settings, Element, Theme};
 use cosmic_notifications_config::NotificationsConfig;
 use cosmic_notifications_util::{AppletEvent, CloseReason, Notification};
 use iced::wayland::Appearance;
 use iced::{Alignment, Color};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -302,19 +303,19 @@ impl Application for CosmicNotifications {
         let mut notifs = Vec::with_capacity(self.active_notifications.len());
 
         for n in &self.active_notifications {
-            let summary = text(if n.summary.len() > 24 {
+            let app_name = text(if n.app_name.len() > 24 {
                 Cow::from(format!(
                     "{:.26}...",
-                    n.summary.lines().next().unwrap_or_default()
+                    n.app_name.lines().next().unwrap_or_default()
                 ))
             } else {
-                Cow::from(&n.summary)
+                Cow::from(&n.app_name)
             })
-            .size(18);
+            .size(12);
             let urgency = n.urgency();
 
             notifs.push(
-                button(Button::Custom {
+                cosmic::widget::button(Button::Custom {
                     active: Box::new(move |t| {
                         let style = if urgency > 1 {
                             Button::Primary
@@ -347,12 +348,12 @@ impl Application for CosmicNotifications {
                 .custom(vec![column!(
                     match n.image() {
                         Some(cosmic_notifications_util::Image::File(path)) => {
-                            row![icon(path.as_path(), 32), summary]
+                            row![icon(path.as_path(), 16), app_name]
                                 .spacing(8)
                                 .align_items(Alignment::Center)
                         }
                         Some(cosmic_notifications_util::Image::Name(name)) => {
-                            row![icon(name.as_str(), 32), summary]
+                            row![icon(name.as_str(), 16), app_name]
                                 .spacing(8)
                                 .align_items(Alignment::Center)
                         }
@@ -362,24 +363,32 @@ impl Application for CosmicNotifications {
                             data,
                         }) => {
                             let handle = image::Handle::from_pixels(*width, *height, data.clone());
-                            row![icon(handle, 32), summary]
+                            row![icon(handle, 16), app_name]
                                 .spacing(8)
                                 .align_items(Alignment::Center)
                         }
-                        None => row![summary],
+                        None => row![app_name],
                     },
-                    text(if n.body.len() > 38 {
+                    text(if n.summary.len() > 77 {
                         Cow::from(format!(
-                            "{:.40}...",
-                            n.body.lines().next().unwrap_or_default()
+                            "{:.80}...",
+                            n.summary.lines().next().unwrap_or_default()
                         ))
                     } else {
                         Cow::from(&n.summary)
                     })
                     .size(14),
+                    text(if n.body.len() > 77 {
+                        Cow::from(format!(
+                            "{:.80}...",
+                            n.body.lines().next().unwrap_or_default()
+                        ))
+                    } else {
+                        Cow::from(&n.body)
+                    })
+                    .size(12),
                     horizontal_space(Length::Fixed(300.0)),
                 )
-                .padding(8.0)
                 .spacing(8)
                 .into()])
                 .on_press(Message::Dismissed(n.id))
@@ -391,7 +400,8 @@ impl Application for CosmicNotifications {
             Column::with_children(notifs)
                 .spacing(8)
                 .width(Length::Shrink)
-                .height(Length::Shrink),
+                .height(Length::Shrink)
+                .align_items(Alignment::Center),
         )
         .width(Length::Shrink)
         .height(Length::Shrink)
@@ -451,5 +461,19 @@ impl Application for CosmicNotifications {
 
     fn close_requested(&self, id: SurfaceId) -> Self::Message {
         Message::ClosedSurface(id)
+    }
+}
+
+fn duration_ago_msg(notification: &Notification) -> String {
+    if let Some(d) = notification.duration_since() {
+        let min = d.as_secs() / 60;
+        let hrs = min / 60;
+        if hrs > 0 {
+            fl!("hours-ago", HashMap::from_iter(vec![("duration", hrs)]))
+        } else {
+            fl!("minutes-ago", HashMap::from_iter(vec![("duration", min)]))
+        }
+    } else {
+        format!("")
     }
 }
