@@ -143,8 +143,17 @@ impl Notifications {
     /// "persistence"	The server supports persistence of notifications. Notifications will be retained until they are acknowledged or removed by the user or recalled by the sender. The presence of this capability allows clients to depend on the server to ensure a notification is seen and eliminate the need for the client to display a reminding function (such as a status icon) of its own.
     /// "sound"	The server supports sounds on notifications. If returned, the server must support the "sound-file" and "suppress-sound" hints.
     async fn get_capabilities(&self) -> Vec<&'static str> {
-        // TODO more capabilities
-        vec!["body", "icon-static", "persistence"]
+        vec![
+            "body",
+            "icon-static",
+            "persistence",
+            // TODO support these
+            "actions",
+            "action-icons",
+            "body-markup",
+            "body-hyperlinks",
+            "sound",
+        ]
     }
 
     #[dbus_interface(out_args("name", "vendor", "version", "spec_version"))]
