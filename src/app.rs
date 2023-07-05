@@ -76,13 +76,13 @@ enum Message {
 }
 
 impl CosmicNotifications {
-    fn close(&mut self, i: u32, reason: CloseReason) -> Command<Message> {
+    fn close(&mut self, i: u32, reason: CloseReason) -> Option<Command<Message>> {
         let Some(i) = self
             .active_notifications
             .iter()
             .position(|n| n.id == i) else {
                 warn!("Notification not found for id {i}");
-            return Command::none();
+            return None;
         };
 
         let notification = self.active_notifications.remove(i);
@@ -112,9 +112,9 @@ impl CosmicNotifications {
         if self.active_notifications.is_empty() && self.active_surface {
             self.active_surface = false;
             info!("Destroying layer surface");
-            destroy_layer_surface(WINDOW_ID)
+            Some(destroy_layer_surface(WINDOW_ID))
         } else {
-            Command::none()
+            Some(Command::none())
         }
     }
 
@@ -268,17 +268,36 @@ impl Application for CosmicNotifications {
                     return self.replace_notification(n);
                 }
                 notifications::Event::CloseNotification(id) => {
-                    return self.close(id, CloseReason::CloseNotification)
+                    if let Some(c) = self.close(id, CloseReason::CloseNotification) {
+                        return c;
+                    } else {
+                        if let Some(ref sender) = &self.panel_tx {
+                            let sender = sender.clone();
+                            tokio::spawn(async move {
+                                sender
+                                    .send(panel::Input::AppletEvent(AppletEvent::Closed(id)))
+                                    .await
+                            });
+                        }
+                    }
                 }
             },
 
-            Message::Dismissed(id) => return self.close(id, CloseReason::Dismissed),
+            Message::Dismissed(id) => {
+                if let Some(c) = self.close(id, CloseReason::Dismissed) {
+                    return c;
+                }
+            }
             Message::ClosedSurface(id) => {
                 if id == WINDOW_ID {
                     self.active_notifications.clear();
                 }
             }
-            Message::Timeout(id) => return self.close(id, CloseReason::Expired),
+            Message::Timeout(id) => {
+                if let Some(c) = self.close(id, CloseReason::Expired) {
+                    return c;
+                }
+            }
             Message::Panel(panel::Event::Ready(tx)) => {
                 self.panel_tx = Some(tx);
             }
@@ -302,7 +321,7 @@ impl Application for CosmicNotifications {
 
         let mut notifs = Vec::with_capacity(self.active_notifications.len());
 
-        for n in &self.active_notifications {
+        for n in self.active_notifications.iter().rev() {
             let app_name = text(if n.app_name.len() > 24 {
                 Cow::from(format!(
                     "{:.26}...",
