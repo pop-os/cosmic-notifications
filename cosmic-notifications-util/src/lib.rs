@@ -53,7 +53,7 @@ impl Notification {
     }
 
     pub fn duration_since(&self) -> Option<std::time::Duration> {
-        self.time.duration_since(SystemTime::now()).ok()
+        SystemTime::now().duration_since(self.time).ok()
     }
 }
 
