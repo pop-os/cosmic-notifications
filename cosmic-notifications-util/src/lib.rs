@@ -1,5 +1,9 @@
+#[cfg(feature = "image")]
+pub mod image;
+pub use image::*;
+
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, time::SystemTime};
+use std::{collections::HashMap, path::PathBuf, time::SystemTime};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Notification {
@@ -15,6 +19,88 @@ pub struct Notification {
 }
 
 impl Notification {
+    #[cfg(feature = "zbus_notifications")]
+    pub fn new(
+        app_name: &str,
+        id: u32,
+        app_icon: &str,
+        summary: &str,
+        body: &str,
+        actions: Vec<&str>,
+        hints: HashMap<&str, zbus::zvariant::Value<'_>>,
+        expire_timeout: i32,
+    ) -> Self {
+        let actions = actions
+            .chunks_exact(2)
+            .map(|a| (ActionId::from(a[0]), a[1].to_string()))
+            .collect();
+
+        let hints = hints
+            .into_iter()
+            .filter_map(|(k, v)| match k {
+                "action-icons" => bool::try_from(v).map(Hint::ActionIcons).ok(),
+                "category" => String::try_from(v).map(Hint::Category).ok(),
+                "desktop-entry" => String::try_from(v).map(Hint::DesktopEntry).ok(),
+                "resident" => bool::try_from(v).map(Hint::Resident).ok(),
+                "sound-file" => String::try_from(v)
+                    .map(|s| Hint::SoundFile(PathBuf::from(s)))
+                    .ok(),
+                "sound-name" => String::try_from(v).map(Hint::SoundName).ok(),
+                "suppress-sound" => bool::try_from(v).map(Hint::SuppressSound).ok(),
+                "transient" => bool::try_from(v).map(Hint::Transient).ok(),
+                "x" => i32::try_from(v).map(Hint::X).ok(),
+                "y" => i32::try_from(v).map(Hint::Y).ok(),
+                "urgency" => u8::try_from(v).map(Hint::Urgency).ok(),
+                "image-path" | "image_path" | "app_icon" => {
+                    String::try_from(v).ok().and_then(|s| {
+                        if s.starts_with("file://") {
+                            s.strip_prefix("file://")
+                                .map(|s| Hint::Image(Image::File(PathBuf::from(s))))
+                        } else {
+                            Some(Hint::Image(Image::Name(s)))
+                        }
+                    })
+                }
+                "image-data" | "image_data" | "icon_data" => match v {
+                    zbus::zvariant::Value::Structure(v) => match ImageData::try_from(v) {
+                        Ok(mut image) => Some({
+                            image = image.into_rgba();
+                            Hint::Image(Image::Data {
+                                width: image.width,
+                                height: image.height,
+                                data: image.data,
+                            })
+                        }),
+                        Err(err) => {
+                            tracing::warn!("Invalid image data: {}", err);
+                            None
+                        }
+                    },
+                    _ => {
+                        tracing::warn!("Invalid value for hint: {}", k);
+                        None
+                    }
+                },
+                _ => {
+                    tracing::warn!("Unknown hint: {}", k);
+                    None
+                }
+            })
+            .collect();
+
+        Notification {
+            id,
+            app_name: app_name.to_string(),
+            app_icon: app_icon.to_string(),
+            summary: summary.to_string(),
+            body: body.to_string(),
+            actions,
+            hints,
+            expire_timeout,
+            time: SystemTime::now(),
+        }
+    }
+
     pub fn transient(&self) -> bool {
         self.hints
             .iter()
@@ -110,26 +196,6 @@ pub enum CloseReason {
     Dismissed = 2,
     CloseNotification = 3,
     Undefined = 4,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum PanelRequest {
-    /// A new instance of the panel is running, so the daemon can reset its state
-    Init,
-    /// The panel has a new client for notifications
-    NewNotificationsClient { id: u32 },
-}
-
-/// A new file descriptor has been sent to the panel with the given id
-/// No need to ever tell the panel we've restarted, all of the applets will restart
-/// when their Fd is closed and exit with an error that indicates the daemon has restarted
-pub type PanelEvent = u32;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum AppletEvent {
-    Notification(Notification),
-    Replace(Notification),
-    Closed(u32),
 }
 
 pub const PANEL_NOTIFICATIONS_FD: &'static str = "PANEL_NOTIFICATIONS_FD";

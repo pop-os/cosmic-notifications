@@ -2,7 +2,7 @@ mod app;
 mod config;
 mod localize;
 mod subscriptions;
-mod util;
+
 use config::APP_ID;
 use tracing::{info, metadata::LevelFilter};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};

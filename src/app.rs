@@ -1,5 +1,5 @@
-use crate::subscriptions::{notifications, panel};
-use crate::{config, fl};
+use crate::config;
+use crate::subscriptions::notifications;
 use cosmic::cosmic_config::{config_subscription, Config, CosmicConfigEntry};
 use cosmic::cosmic_theme::util::CssColor;
 use cosmic::iced::wayland::actions::layer_surface::{IcedMargin, SctkLayerSurfaceSettings};
@@ -7,7 +7,7 @@ use cosmic::iced::wayland::layer_surface::{
     destroy_layer_surface, get_layer_surface, Anchor, KeyboardInteractivity,
 };
 use cosmic::iced::wayland::InitialSurface;
-use cosmic::iced::widget::{container, horizontal_space, image, text, Column};
+use cosmic::iced::widget::{container, image, text, Column};
 use cosmic::iced::{self, Application, Command, Length, Limits, Subscription};
 use cosmic::iced_runtime::core::window::Id as SurfaceId;
 use cosmic::iced_style::{application, button::StyleSheet};
@@ -16,11 +16,10 @@ use cosmic::theme::Button;
 use cosmic::widget::icon;
 use cosmic::{settings, Element, Theme};
 use cosmic_notifications_config::NotificationsConfig;
-use cosmic_notifications_util::{AppletEvent, CloseReason, Notification};
+use cosmic_notifications_util::{CloseReason, Notification};
 use iced::wayland::Appearance;
 use iced::{Alignment, Color};
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -41,7 +40,6 @@ struct CosmicNotifications {
     active_notifications: Vec<Notification>,
     theme: Theme,
     notifications_tx: Option<mpsc::Sender<notifications::Input>>,
-    panel_tx: Option<mpsc::Sender<panel::Input>>,
     config: NotificationsConfig,
 }
 
@@ -68,7 +66,6 @@ enum Message {
     ActivateNotification(u32),
     Dismissed(u32),
     Notification(notifications::Event),
-    Panel(panel::Event),
     ClosedSurface(SurfaceId),
     Theme(Theme),
     Timeout(u32),
@@ -97,15 +94,11 @@ impl CosmicNotifications {
             }
         }
 
-        if let Some(ref sender) = &self.panel_tx {
+        if let Some(ref sender) = &self.notifications_tx {
             if !matches!(reason, CloseReason::Expired) {
                 let sender = sender.clone();
                 let id = notification.id;
-                tokio::spawn(async move {
-                    sender
-                        .send(panel::Input::AppletEvent(AppletEvent::Closed(id)))
-                        .await
-                });
+                tokio::spawn(async move { sender.send(notifications::Input::Dismissed(id)).await });
             }
         }
 
@@ -140,18 +133,6 @@ impl CosmicNotifications {
                 move |_| Message::Timeout(notification.id),
             )
         }];
-
-        if let Some(ref sender) = &self.panel_tx {
-            let sender = sender.clone();
-            let notification = notification.clone();
-            tokio::spawn(async move {
-                sender
-                    .send(panel::Input::AppletEvent(AppletEvent::Notification(
-                        notification,
-                    )))
-                    .await
-            });
-        }
 
         if self.active_notifications.is_empty() && !self.config.do_not_disturb {
             info!("Creating layer surface");
@@ -192,17 +173,6 @@ impl CosmicNotifications {
             .find(|n| n.id == notification.id)
         {
             *notif = notification;
-            if let Some(ref sender) = &self.panel_tx {
-                let sender = sender.clone();
-                let notification = notif.clone();
-                tokio::spawn(async move {
-                    sender
-                        .send(panel::Input::AppletEvent(AppletEvent::Replace(
-                            notification,
-                        )))
-                        .await
-                });
-            }
             Command::none()
         } else {
             tracing::error!("Notification not found... pushing instead");
@@ -270,15 +240,6 @@ impl Application for CosmicNotifications {
                 notifications::Event::CloseNotification(id) => {
                     if let Some(c) = self.close(id, CloseReason::CloseNotification) {
                         return c;
-                    } else {
-                        if let Some(ref sender) = &self.panel_tx {
-                            let sender = sender.clone();
-                            tokio::spawn(async move {
-                                sender
-                                    .send(panel::Input::AppletEvent(AppletEvent::Closed(id)))
-                                    .await
-                            });
-                        }
                     }
                 }
             },
@@ -297,9 +258,6 @@ impl Application for CosmicNotifications {
                 if let Some(c) = self.close(id, CloseReason::Expired) {
                     return c;
                 }
-            }
-            Message::Panel(panel::Event::Ready(tx)) => {
-                self.panel_tx = Some(tx);
             }
             Message::Config(config) => {
                 self.config = config;
@@ -462,7 +420,7 @@ impl Application for CosmicNotifications {
                     }
                 }),
                 notifications::notifications().map(Message::Notification),
-                panel::panel().map(Message::Panel),
+                // applet::panel().map(Message::Panel),
             ]
             .into_iter(),
         )
@@ -481,19 +439,5 @@ impl Application for CosmicNotifications {
 
     fn close_requested(&self, id: SurfaceId) -> Self::Message {
         Message::ClosedSurface(id)
-    }
-}
-
-fn duration_ago_msg(notification: &Notification) -> String {
-    if let Some(d) = notification.duration_since() {
-        let min = d.as_secs() / 60;
-        let hrs = min / 60;
-        if hrs > 0 {
-            fl!("hours-ago", HashMap::from_iter(vec![("duration", hrs)]))
-        } else {
-            fl!("minutes-ago", HashMap::from_iter(vec![("duration", min)]))
-        }
-    } else {
-        format!("")
     }
 }

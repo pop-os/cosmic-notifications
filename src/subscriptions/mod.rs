@@ -1,2 +1,2 @@
+pub mod applet;
 pub mod notifications;
-pub mod panel;
