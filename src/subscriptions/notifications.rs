@@ -129,7 +129,7 @@ pub fn notifications() -> Subscription<Event> {
                                     _ = output.send(Event::CloseNotification(id)).await;
 
                                     let object_server = notifications.object_server();
-                                    let Ok(iface_ref) = object_server.interface::<_, Notifications>("/org/freedesktop/Notifications/").await else {
+                                    let Ok(iface_ref) = object_server.interface::<_, Notifications>("/org/freedesktop/Notifications").await else {
                                         continue;
                                     };
                                     if let Err(err) = Notifications::notification_closed(
@@ -144,7 +144,7 @@ pub fn notifications() -> Subscription<Event> {
                                 }
                                 Input::Dismissed(id) => {
                                     let object_server = notifications.object_server();
-                                    let Ok(iface_ref) = object_server.interface::<_, Notifications>("/org/freedesktop/Notifications/").await else {
+                                    let Ok(iface_ref) = object_server.interface::<_, Notifications>("/org/freedesktop/Notifications").await else {
                                         continue;
                                     };
                                     if let Err(err) = Notifications::notification_closed(
