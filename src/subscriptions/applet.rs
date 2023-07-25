@@ -14,24 +14,27 @@ use cosmic_notifications_util::DAEMON_NOTIFICATIONS_FD;
 use std::os::unix::io::FromRawFd;
 
 pub async fn setup_panel_conn(tx: Sender<Input>) -> Result<Connection> {
-    let socket = setup_panel_socket().await?;
+    let socket = setup_panel_socket()?;
     info!("Got UnixStream");
     let guid = Guid::generate();
-    let conn = ConnectionBuilder::socket(socket)
-        .p2p()
-        .server(&guid)
-        .serve_at(
-            "/com/system76/NotificationsSocket",
-            NotificationsSocket { tx },
-        )?
-        .build()
-        .await?;
+    let conn = tokio::time::timeout(
+        tokio::time::Duration::from_secs(1),
+        ConnectionBuilder::socket(socket)
+            .p2p()
+            .server(&guid)
+            .serve_at(
+                "/com/system76/NotificationsSocket",
+                NotificationsSocket { tx },
+            )?
+            .build(),
+    )
+    .await??;
     info!("Created panel connection");
 
     Ok(conn)
 }
 
-pub async fn setup_panel_socket() -> Result<UnixStream> {
+pub fn setup_panel_socket() -> Result<UnixStream> {
     if let Ok(fd_num) = std::env::var(DAEMON_NOTIFICATIONS_FD) {
         if let Ok(fd) = fd_num.parse::<RawFd>() {
             info!("Connecting to daemon on fd {}", fd);
