@@ -45,22 +45,6 @@ pub async fn setup_panel_socket() -> Result<UnixStream> {
             unix_stream.set_nonblocking(true)?;
 
             let unix_stream: UnixStream = UnixStream::from_std(unix_stream)?;
-            // XXX first read to end during setup to make sure we have no leftover data after a restart
-            let mut buf = [0u8; 1024];
-            loop {
-                match unix_stream.try_read(&mut buf) {
-                    Ok(0) => {
-                        // EOF
-                        break;
-                    }
-                    Ok(_) => {
-                        // read more
-                    }
-                    _ => {
-                        break;
-                    }
-                }
-            }
 
             Ok(unix_stream)
         } else {
