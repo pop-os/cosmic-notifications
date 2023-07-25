@@ -52,16 +52,14 @@ impl Notification {
                 "x" => i32::try_from(v).map(Hint::X).ok(),
                 "y" => i32::try_from(v).map(Hint::Y).ok(),
                 "urgency" => u8::try_from(v).map(Hint::Urgency).ok(),
-                "image-path" | "image_path" | "app_icon" => {
-                    String::try_from(v).ok().and_then(|s| {
-                        if s.starts_with("file://") {
-                            s.strip_prefix("file://")
-                                .map(|s| Hint::Image(Image::File(PathBuf::from(s))))
-                        } else {
-                            Some(Hint::Image(Image::Name(s)))
-                        }
-                    })
-                }
+                "image-path" | "image_path" => String::try_from(v).ok().and_then(|s| {
+                    if let Some(path) = url::Url::parse(&s).ok().and_then(|u| u.to_file_path().ok())
+                    {
+                        Some(Hint::Image(Image::File(path)))
+                    } else {
+                        Some(Hint::Image(Image::Name(s)))
+                    }
+                }),
                 "image-data" | "image_data" | "icon_data" => match v {
                     zbus::zvariant::Value::Structure(v) => match ImageData::try_from(v) {
                         Ok(mut image) => Some({
