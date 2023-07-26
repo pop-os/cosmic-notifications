@@ -9,7 +9,7 @@ use cosmic::{
 use cosmic_notifications_util::{CloseReason, Notification};
 use std::{collections::HashMap, fmt::Debug, num::NonZeroU32};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use zbus::{dbus_interface, Connection, ConnectionBuilder, SignalContext};
 
@@ -53,12 +53,11 @@ pub fn notifications() -> Subscription<Event> {
         |mut output| async move {
             let mut state = State::Starting;
 
-            loop {
+            'outer: loop {
                 match &mut state {
                     State::Starting => {
                         // Create channel
                         let (tx, rx) = channel(100);
-                        let applets = Vec::new();
                         let panel = match applet::setup_panel_conn(tx.clone()).await {
                             Ok(conn) => Some(conn),
                             Err(err) => {
@@ -67,33 +66,45 @@ pub fn notifications() -> Subscription<Event> {
                             }
                         };
 
-                        if let Some(conn) = ConnectionBuilder::session()
-                            .ok()
-                            .and_then(|conn| conn.name("org.freedesktop.Notifications").ok())
-                            .and_then(|conn| {
-                                conn.serve_at(
-                                    "/org/freedesktop/Notifications",
-                                    Notifications(tx.clone(), NonZeroU32::new(1).unwrap(), applets),
-                                )
+                        for _ in 0..5 {
+                            if let Some(conn) = ConnectionBuilder::session()
                                 .ok()
-                            })
-                            .map(ConnectionBuilder::build)
-                        {
-                            if let Ok(conn) = conn.await {
-                                // Send the sender back to the application
-                                _ = output.send(Event::Ready(tx)).await;
+                                .and_then(|conn| conn.name("org.freedesktop.Notifications").ok())
+                                .and_then(|conn| {
+                                    conn.serve_at(
+                                        "/org/freedesktop/Notifications",
+                                        Notifications(
+                                            tx.clone(),
+                                            NonZeroU32::new(1).unwrap(),
+                                            Vec::new(),
+                                        ),
+                                    )
+                                    .ok()
+                                })
+                                .map(ConnectionBuilder::build)
+                            {
+                                if let Ok(conn) = conn.await {
+                                    // Send the sender back to the application
+                                    _ = output.send(Event::Ready(tx)).await;
 
-                                // We are ready to receive messages
-                                state = State::Waiting {
-                                    notifications: conn,
-                                    rx,
-                                    panel,
-                                };
+                                    // We are ready to receive messages
+                                    state = State::Waiting {
+                                        notifications: conn,
+                                        rx,
+                                        panel,
+                                    };
+                                    continue 'outer;
+                                }
+                            } else {
+                                warn!(
+                                    "Failed to create connection at /org/freedesktop/Notifications"
+                                );
+                                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                             }
-                        } else {
-                            tracing::error!("Failed to create the dbus server");
-                            state = State::Finished;
                         }
+
+                        tracing::error!("Failed to create the dbus server");
+                        state = State::Finished;
                     }
                     State::Waiting {
                         notifications,
