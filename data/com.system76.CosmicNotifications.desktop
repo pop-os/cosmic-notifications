@@ -8,4 +8,5 @@ Categories=GNOME;GTK;
 Keywords=Gnome;GTK;
 Icon=com.system76.CosmicNotifications
 StartupNotify=true
+NoDisplay=true
 X-HostWaylandDisplay=true
