@@ -276,49 +276,51 @@ impl Notifications {
         } else {
             replaces_id
         };
-        let mut new_conns = Vec::with_capacity(self.2.len());
-        for c in self.2.drain(..) {
-            info!("Sending notification to applet");
-            let object_server = c.object_server();
-            let Ok(Ok(iface_ref)) = tokio::time::timeout(tokio::time::Duration::from_millis(100), object_server.interface::<_, NotificationsApplet>("/com/system76/NotificationsApplet")).await else {
-                continue;
-            };
-            match tokio::time::timeout(
-                tokio::time::Duration::from_millis(500),
-                NotificationsApplet::notify(
-                    iface_ref.signal_context(),
-                    app_name,
-                    id,
-                    app_icon,
-                    summary,
-                    body,
-                    actions.clone(),
-                    hints.clone(),
-                    expire_timeout,
-                ),
-            )
-            .await
-            {
-                Ok(Err(err)) => error!("Failed to notify applet of notification {}", err),
-                Err(err) => error!("Failed to notify applet of notification {}", err),
-                Ok(_) => {}
-            }
-            drop(object_server);
-            new_conns.push(c);
-            info!("Sent notification to applet");
-        }
-        self.2 = new_conns;
-
         let n = Notification::new(
             app_name,
             id,
             app_icon,
             summary,
             body,
-            actions,
-            hints,
+            actions.clone(),
+            hints.clone(),
             expire_timeout,
         );
+
+        if !n.transient() {
+            let mut new_conns = Vec::with_capacity(self.2.len());
+            for c in self.2.drain(..) {
+                info!("Sending notification to applet");
+                let object_server = c.object_server();
+                let Ok(Ok(iface_ref)) = tokio::time::timeout(tokio::time::Duration::from_millis(100), object_server.interface::<_, NotificationsApplet>("/com/system76/NotificationsApplet")).await else {
+                continue;
+            };
+                match tokio::time::timeout(
+                    tokio::time::Duration::from_millis(500),
+                    NotificationsApplet::notify(
+                        iface_ref.signal_context(),
+                        app_name,
+                        id,
+                        app_icon,
+                        summary,
+                        body,
+                        actions.clone(),
+                        hints.clone(),
+                        expire_timeout,
+                    ),
+                )
+                .await
+                {
+                    Ok(Err(err)) => error!("Failed to notify applet of notification {}", err),
+                    Err(err) => error!("Failed to notify applet of notification {}", err),
+                    Ok(_) => {}
+                }
+                drop(object_server);
+                new_conns.push(c);
+                info!("Sent notification to applet");
+            }
+            self.2 = new_conns;
+        }
 
         if let Err(err) = self
             .0

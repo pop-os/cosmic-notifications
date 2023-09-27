@@ -101,9 +101,7 @@ impl Notification {
     }
 
     pub fn transient(&self) -> bool {
-        self.hints
-            .iter()
-            .any(|h| matches!(h, Hint::Transient(true)))
+        self.hints.iter().any(|h| *h == Hint::Transient(true))
     }
 
     pub fn category(&self) -> Option<&str> {
