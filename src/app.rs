@@ -5,13 +5,13 @@ use cosmic::iced::wayland::actions::layer_surface::{IcedMargin, SctkLayerSurface
 use cosmic::iced::wayland::layer_surface::{
     destroy_layer_surface, get_layer_surface, Anchor, KeyboardInteractivity,
 };
-use cosmic::iced::widget::{container, image, text, Column};
+use cosmic::iced::widget::{container, text, Column};
 use cosmic::iced::{self, Length, Limits, Subscription};
 use cosmic::iced_runtime::core::window::Id as SurfaceId;
-use cosmic::iced_style::{application, button::StyleSheet};
+use cosmic::iced_style::application;
 use cosmic::iced_widget::{column, row, vertical_space};
 use cosmic::theme::Button;
-use cosmic::widget::icon;
+use cosmic::widget::{button::StyleSheet, icon};
 use cosmic::{app::Command, Element, Theme};
 use cosmic_notifications_config::NotificationsConfig;
 use cosmic_notifications_util::{CloseReason, Notification};
@@ -285,83 +285,126 @@ impl cosmic::Application for CosmicNotifications {
             let urgency = n.urgency();
 
             notifs.push(
-                cosmic::widget::button(Button::Custom {
-                    active: Box::new(move |t| {
-                        let style = if urgency > 1 {
-                            Button::Primary
+                cosmic::widget::button(
+                    column!(
+                        match n.image() {
+                            Some(cosmic_notifications_util::Image::File(path)) => {
+                                row![icon(icon::from_path(path.clone())).size(16), app_name]
+                                    .spacing(8)
+                                    .align_items(Alignment::Center)
+                            }
+                            Some(cosmic_notifications_util::Image::Name(name)) => {
+                                row![
+                                    icon(icon::from_name(name.as_str()).into()).size(16),
+                                    app_name
+                                ]
+                                .spacing(8)
+                                .align_items(Alignment::Center)
+                            }
+                            Some(cosmic_notifications_util::Image::Data {
+                                width,
+                                height,
+                                data,
+                            }) => {
+                                row![
+                                    icon(icon::from_raster_pixels(*width, *height, data.clone()))
+                                        .size(16),
+                                    app_name
+                                ]
+                                .spacing(8)
+                                .align_items(Alignment::Center)
+                            }
+                            None => row![app_name],
+                        },
+                        text(if n.summary.len() > 77 {
+                            Cow::from(format!(
+                                "{:.80}...",
+                                n.summary.lines().next().unwrap_or_default()
+                            ))
                         } else {
-                            Button::Secondary
+                            Cow::from(&n.summary)
+                        })
+                        .size(14)
+                        .width(Length::Fixed(300.0)),
+                        text(if n.body.len() > 77 {
+                            Cow::from(format!(
+                                "{:.80}...",
+                                n.body.lines().next().unwrap_or_default()
+                            ))
+                        } else {
+                            Cow::from(&n.body)
+                        })
+                        .size(12)
+                        .width(Length::Fixed(300.0)),
+                    )
+                    .spacing(8),
+                )
+                .style(Button::Custom {
+                    active: Box::new(move |focused, t| {
+                        let style = if urgency > 1 {
+                            Button::Suggested
+                        } else {
+                            Button::Standard
                         };
                         let cosmic = t.cosmic();
-                        let mut a = t.active(&style);
+                        let mut a = t.active(focused, &style);
+                        if urgency <= 1 {
+                            a.background = Some(Color::from(cosmic.bg_color()).into());
+                        }
                         a.border_radius = 8.0.into();
-                        a.background = Some(Color::from(cosmic.bg_color()).into());
                         a.border_color = Color::from(cosmic.bg_divider());
                         a.border_width = 1.0;
                         a
                     }),
-                    hover: Box::new(move |t| {
+                    hovered: Box::new(move |focused, t| {
                         let style = if urgency > 1 {
-                            Button::Primary
+                            Button::Suggested
                         } else {
-                            Button::Secondary
+                            Button::Standard
                         };
                         let cosmic = t.cosmic();
-                        let mut a = t.hovered(&style);
+                        let mut a = t.hovered(focused, &style);
+                        if urgency <= 1 {
+                            a.background = Some(Color::from(cosmic.bg_color()).into());
+                        }
                         a.border_radius = 8.0.into();
-                        a.background = Some(Color::from(cosmic.bg_color()).into());
+                        a.border_color = Color::from(cosmic.bg_divider());
+                        a.border_width = 1.0;
+                        a
+                    }),
+                    disabled: Box::new(move |t| {
+                        let style = if urgency > 1 {
+                            Button::Suggested
+                        } else {
+                            Button::Standard
+                        };
+                        let cosmic = t.cosmic();
+                        let mut a = t.disabled(&style);
+                        if urgency <= 1 {
+                            a.background = Some(Color::from(cosmic.bg_color()).into());
+                        }
+                        a.border_radius = 8.0.into();
+                        a.border_color = Color::from(cosmic.bg_divider());
+                        a.border_width = 1.0;
+                        a
+                    }),
+                    pressed: Box::new(move |focused, t| {
+                        let style = if urgency > 1 {
+                            Button::Suggested
+                        } else {
+                            Button::Standard
+                        };
+                        let cosmic = t.cosmic();
+                        let mut a = t.pressed(focused, &style);
+                        if urgency <= 1 {
+                            a.background = Some(Color::from(cosmic.bg_color()).into());
+                        }
+                        a.border_radius = 8.0.into();
                         a.border_color = Color::from(cosmic.bg_divider());
                         a.border_width = 1.0;
                         a
                     }),
                 })
-                .custom(vec![column!(
-                    match n.image() {
-                        Some(cosmic_notifications_util::Image::File(path)) => {
-                            row![icon(path.as_path(), 16), app_name]
-                                .spacing(8)
-                                .align_items(Alignment::Center)
-                        }
-                        Some(cosmic_notifications_util::Image::Name(name)) => {
-                            row![icon(name.as_str(), 16), app_name]
-                                .spacing(8)
-                                .align_items(Alignment::Center)
-                        }
-                        Some(cosmic_notifications_util::Image::Data {
-                            width,
-                            height,
-                            data,
-                        }) => {
-                            let handle = image::Handle::from_pixels(*width, *height, data.clone());
-                            row![icon(handle, 16), app_name]
-                                .spacing(8)
-                                .align_items(Alignment::Center)
-                        }
-                        None => row![app_name],
-                    },
-                    text(if n.summary.len() > 77 {
-                        Cow::from(format!(
-                            "{:.80}...",
-                            n.summary.lines().next().unwrap_or_default()
-                        ))
-                    } else {
-                        Cow::from(&n.summary)
-                    })
-                    .size(14)
-                    .width(Length::Fixed(300.0)),
-                    text(if n.body.len() > 77 {
-                        Cow::from(format!(
-                            "{:.80}...",
-                            n.body.lines().next().unwrap_or_default()
-                        ))
-                    } else {
-                        Cow::from(&n.body)
-                    })
-                    .size(12)
-                    .width(Length::Fixed(300.0)),
-                )
-                .spacing(8)
-                .into()])
                 .on_press(Message::Dismissed(n.id))
                 .into(),
             );
@@ -408,6 +451,7 @@ impl cosmic::Application for CosmicNotifications {
             |theme| Appearance {
                 background_color: Color::from_rgba(0.0, 0.0, 0.0, 0.0),
                 text_color: theme.cosmic().on_bg_color().into(),
+                icon_color: theme.cosmic().on_bg_color().into(),
             },
         )))
     }
