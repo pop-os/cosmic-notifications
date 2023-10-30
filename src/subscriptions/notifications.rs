@@ -34,6 +34,7 @@ pub enum Input {
     Closed(u32, CloseReason),
     Dismissed(u32),
     AppletConn(Connection),
+    PanelConn(Connection),
 }
 
 #[derive(Debug, Clone)]
@@ -58,13 +59,18 @@ pub fn notifications() -> Subscription<Event> {
                     State::Starting => {
                         // Create channel
                         let (tx, rx) = channel(100);
-                        let panel = match applet::setup_panel_conn(tx.clone()).await {
-                            Ok(conn) => Some(conn),
-                            Err(err) => {
-                                error!("Failed to setup panel dbus server {}", err.to_string());
-                                None
+                        let tx_clone = tx.clone();
+                        tokio::spawn(async move {
+                            let tx = tx_clone.clone();
+
+                            match applet::setup_panel_conn(tx.clone()).await {
+                                Ok(conn) => tx.send(Input::PanelConn(conn)).await,
+                                Err(err) => {
+                                    error!("Failed to setup panel dbus server {}", err.to_string());
+                                    Ok(())
+                                }
                             }
-                        };
+                        });
 
                         for _ in 0..5 {
                             if let Some(conn) = ConnectionBuilder::session()
@@ -91,7 +97,7 @@ pub fn notifications() -> Subscription<Event> {
                                     state = State::Waiting {
                                         notifications: conn,
                                         rx,
-                                        panel,
+                                        panel: None,
                                     };
                                     continue 'outer;
                                 }
@@ -109,7 +115,7 @@ pub fn notifications() -> Subscription<Event> {
                     State::Waiting {
                         notifications,
                         rx,
-                        panel: _,
+                        panel,
                     } => {
                         // Read next input sent from `Application`
                         if let Some(next) = rx.recv().await {
@@ -178,6 +184,7 @@ pub fn notifications() -> Subscription<Event> {
                                     iface.2.push(c);
                                     info!("Applet connection added to list");
                                 }
+                                Input::PanelConn(c) => *panel = Some(c),
                             }
                         } else {
                             // The channel was closed, so we are done

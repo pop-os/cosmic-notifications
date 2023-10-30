@@ -17,18 +17,15 @@ pub async fn setup_panel_conn(tx: Sender<Input>) -> Result<Connection> {
     let socket = setup_panel_socket()?;
     info!("Got UnixStream");
     let guid = Guid::generate();
-    let conn = tokio::time::timeout(
-        tokio::time::Duration::from_secs(1),
-        ConnectionBuilder::socket(socket)
-            .p2p()
-            .server(&guid)
-            .serve_at(
-                "/com/system76/NotificationsSocket",
-                NotificationsSocket { tx },
-            )?
-            .build(),
-    )
-    .await??;
+    let conn = ConnectionBuilder::socket(socket)
+        .p2p()
+        .server(&guid)
+        .serve_at(
+            "/com/system76/NotificationsSocket",
+            NotificationsSocket { tx },
+        )?
+        .build()
+        .await?;
     info!("Created panel connection");
 
     Ok(conn)
