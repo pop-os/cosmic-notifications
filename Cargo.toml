@@ -6,10 +6,8 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
-async-stream = "0.3.5"
 console-subscriber = "0.1.9"
 i18n-embed = { version = "0.13.4", features = ["fluent-system", "desktop-requester"] }
-i18n-embed-fl = "0.6.4"
 libcosmic = { git = "https://github.com/pop-os/libcosmic/", default-features = false, features = ["wayland", "tokio"] }
 # libcosmic = { path = "../libcosmic", default-features = false, features = ["wayland", "tokio"] }
 tracing = "0.1"
@@ -20,13 +18,11 @@ tracing-journald = "0.3.0"
 rust-embed = "6.3.0"
 serde = { version = "1.0.152", features = ["derive"] }
 ron = "0.8"
-shlex = "1.1.0"
 tokio = { version = "1.24.1", features = ["sync", "rt", "tracing", "macros", "net", "io-util"] }
 xdg = "2.4.1"
 zbus = {version = "3.13.1", features = ["tokio"]}
 cosmic-notifications-util = { path = "./cosmic-notifications-util" }
 cosmic-notifications-config = { path = "./cosmic-notifications-config" }
-sendfd = { version = "0.4", features = ["tokio"] }
 bytemuck = "1.13.1"
 log-panics = { version = "2", features = ["with-backtrace"] }
 
