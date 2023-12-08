@@ -32,3 +32,6 @@ log-panics = { version = "2", features = ["with-backtrace"] }
 
 [workspace]
 members = ["cosmic-notifications-util", "cosmic-notifications-config"]
+
+[patch."https://github.com/Smithay/client-toolkit"]
+sctk = { git = "https://github.com/smithay/client-toolkit//", package = "smithay-client-toolkit", rev = "e63ab5f" }

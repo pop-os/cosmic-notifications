@@ -17,12 +17,13 @@ use cosmic_notifications_config::NotificationsConfig;
 use cosmic_notifications_util::{CloseReason, Notification};
 use iced::wayland::Appearance;
 use iced::{Alignment, Color};
+use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
-const WINDOW_ID: SurfaceId = SurfaceId(1);
+static WINDOW_ID: Lazy<SurfaceId> = Lazy::new(|| SurfaceId::unique());
 
 pub fn run() -> cosmic::iced::Result {
     cosmic::app::run::<CosmicNotifications>(
@@ -91,7 +92,7 @@ impl CosmicNotifications {
         if self.active_notifications.is_empty() && self.active_surface {
             self.active_surface = false;
             info!("Destroying layer surface");
-            Some(destroy_layer_surface(WINDOW_ID))
+            Some(destroy_layer_surface(WINDOW_ID.clone()))
         } else {
             Some(Command::none())
         }
@@ -127,7 +128,7 @@ impl CosmicNotifications {
             info!("Creating layer surface");
             self.active_surface = true;
             commands.push(get_layer_surface(SctkLayerSurfaceSettings {
-                id: WINDOW_ID,
+                id: WINDOW_ID.clone(),
                 anchor: Anchor::TOP,
                 exclusive_zone: 0,
                 keyboard_interactivity: KeyboardInteractivity::None,
@@ -244,7 +245,7 @@ impl cosmic::Application for CosmicNotifications {
                 }
             }
             Message::ClosedSurface(id) => {
-                if id == WINDOW_ID {
+                if id == WINDOW_ID.clone() {
                     self.active_notifications.clear();
                 }
             }
