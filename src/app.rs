@@ -353,7 +353,7 @@ impl cosmic::Application for CosmicNotifications {
                         if urgency <= 1 {
                             a.background = Some(Color::from(cosmic.bg_color()).into());
                         }
-                        a.border_radius = 8.0.into();
+                        a.border_radius = cosmic.corner_radii.radius_s.into();
                         a.border_color = Color::from(cosmic.bg_divider());
                         a.border_width = 1.0;
                         a
@@ -369,7 +369,7 @@ impl cosmic::Application for CosmicNotifications {
                         if urgency <= 1 {
                             a.background = Some(Color::from(cosmic.bg_color()).into());
                         }
-                        a.border_radius = 8.0.into();
+                        a.border_radius = cosmic.corner_radii.radius_s.into();
                         a.border_color = Color::from(cosmic.bg_divider());
                         a.border_width = 1.0;
                         a
@@ -385,7 +385,7 @@ impl cosmic::Application for CosmicNotifications {
                         if urgency <= 1 {
                             a.background = Some(Color::from(cosmic.bg_color()).into());
                         }
-                        a.border_radius = 8.0.into();
+                        a.border_radius = cosmic.corner_radii.radius_s.into();
                         a.border_color = Color::from(cosmic.bg_divider());
                         a.border_width = 1.0;
                         a
@@ -401,7 +401,7 @@ impl cosmic::Application for CosmicNotifications {
                         if urgency <= 1 {
                             a.background = Some(Color::from(cosmic.bg_color()).into());
                         }
-                        a.border_radius = 8.0.into();
+                        a.border_radius = cosmic.corner_radii.radius_s.into();
                         a.border_color = Color::from(cosmic.bg_divider());
                         a.border_width = 1.0;
                         a
