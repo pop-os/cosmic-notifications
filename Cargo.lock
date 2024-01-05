@@ -835,6 +835,7 @@ dependencies = [
  "cosmic-notifications-config",
  "cosmic-notifications-util",
  "cosmic-panel-config",
+ "cosmic-time",
  "i18n-embed",
  "i18n-embed-fl",
  "libcosmic",
@@ -942,6 +943,16 @@ dependencies = [
  "palette",
  "ron",
  "serde",
+]
+
+[[package]]
+name = "cosmic-time"
+version = "0.4.0"
+source = "git+https://github.com/pop-os/cosmic-time#4dc1fcec44aa7471a8e707fa391f9882d23250d7"
+dependencies = [
+ "float-cmp",
+ "libcosmic",
+ "once_cell",
 ]
 
 [[package]]
