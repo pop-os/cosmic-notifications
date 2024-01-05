@@ -834,6 +834,7 @@ dependencies = [
  "console-subscriber",
  "cosmic-notifications-config",
  "cosmic-notifications-util",
+ "cosmic-panel-config",
  "i18n-embed",
  "i18n-embed-fl",
  "libcosmic",
@@ -871,6 +872,20 @@ dependencies = [
  "tracing",
  "url",
  "zbus",
+]
+
+[[package]]
+name = "cosmic-panel-config"
+version = "0.1.0"
+source = "git+https://github.com/pop-os/cosmic-panel#dcfa3eaf124571d039320d0dd9da6ae00743b153"
+dependencies = [
+ "anyhow",
+ "cosmic-config",
+ "ron",
+ "serde",
+ "tracing",
+ "wayland-protocols-wlr",
+ "xdg-shell-wrapper-config",
 ]
 
 [[package]]
@@ -5150,6 +5165,7 @@ dependencies = [
  "wayland-client 0.31.1",
  "wayland-protocols 0.31.0",
  "wayland-scanner 0.31.0",
+ "wayland-server",
 ]
 
 [[package]]
@@ -5603,6 +5619,15 @@ checksum = "2769203cd13a0c6015d515be729c526d041e9cf2c0cc478d57faee85f40c6dcd"
 dependencies = [
  "nix 0.26.4",
  "winapi",
+]
+
+[[package]]
+name = "xdg-shell-wrapper-config"
+version = "0.1.0"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper#f2ca1c3dee8f66c40bdc91cb39de69a62aaaf22f"
+dependencies = [
+ "serde",
+ "wayland-protocols-wlr",
 ]
 
 [[package]]

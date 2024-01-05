@@ -26,6 +26,7 @@ xdg = "2.4.1"
 zbus = {version = "3.13.1", features = ["tokio"]}
 cosmic-notifications-util = { path = "./cosmic-notifications-util" }
 cosmic-notifications-config = { path = "./cosmic-notifications-config" }
+cosmic-panel-config = { git = "https://github.com/pop-os/cosmic-panel" }
 sendfd = { version = "0.4", features = ["tokio"] }
 bytemuck = "1.13.1"
 log-panics = { version = "2", features = ["with-backtrace"] }
