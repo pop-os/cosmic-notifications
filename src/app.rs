@@ -1,7 +1,9 @@
 use crate::subscriptions::notifications;
 use cosmic::app::{Core, Settings};
 use cosmic::cosmic_config::{config_subscription, Config, CosmicConfigEntry};
-use cosmic::iced::wayland::actions::layer_surface::{IcedMargin, SctkLayerSurfaceSettings};
+use cosmic::iced::wayland::actions::layer_surface::{
+    IcedMargin, IcedOutput, SctkLayerSurfaceSettings,
+};
 use cosmic::iced::wayland::layer_surface::{
     destroy_layer_surface, get_layer_surface, Anchor, KeyboardInteractivity,
 };
@@ -15,6 +17,7 @@ use cosmic::widget::{button::StyleSheet, icon};
 use cosmic::{app::Command, Element, Theme};
 use cosmic_notifications_config::NotificationsConfig;
 use cosmic_notifications_util::{CloseReason, Notification};
+use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, PanelAnchor};
 use iced::wayland::Appearance;
 use iced::{Alignment, Color};
 use once_cell::sync::Lazy;
@@ -24,6 +27,7 @@ use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 static WINDOW_ID: Lazy<SurfaceId> = Lazy::new(|| SurfaceId::unique());
+static NOTIFICATIONS_APPLET: &str = "com.system76.CosmicAppletNotifications";
 
 pub fn run() -> cosmic::iced::Result {
     cosmic::app::run::<CosmicNotifications>(
@@ -47,6 +51,9 @@ struct CosmicNotifications {
     active_notifications: Vec<Notification>,
     notifications_tx: Option<mpsc::Sender<notifications::Input>>,
     config: NotificationsConfig,
+    dock_config: CosmicPanelConfig,
+    panel_config: CosmicPanelConfig,
+    anchor: Option<(Anchor, Option<String>)>,
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +64,8 @@ enum Message {
     ClosedSurface(SurfaceId),
     Timeout(u32),
     Config(NotificationsConfig),
+    PanelConfig(CosmicPanelConfig),
+    DockConfig(CosmicPanelConfig),
 }
 
 impl CosmicNotifications {
@@ -98,6 +107,125 @@ impl CosmicNotifications {
         }
     }
 
+    fn anchor_for_notification_applet(&self) -> (Anchor, Option<String>) {
+        self.panel_config
+            .plugins_left()
+            .iter()
+            .find_map(|p| {
+                if p.iter().any(|s| s == NOTIFICATIONS_APPLET) {
+                    return Some((
+                        match self.panel_config.anchor {
+                            PanelAnchor::Top => Anchor::TOP.union(Anchor::LEFT),
+                            PanelAnchor::Bottom => Anchor::BOTTOM.union(Anchor::LEFT),
+                            PanelAnchor::Left => Anchor::LEFT.union(Anchor::TOP),
+                            PanelAnchor::Right => Anchor::RIGHT.union(Anchor::TOP),
+                        },
+                        match self.panel_config.output {
+                            CosmicPanelOuput::Name(ref n) => Some(n.clone()),
+                            _ => None,
+                        },
+                    ));
+                }
+                None
+            })
+            .or_else(|| {
+                self.panel_config.plugins_right().iter().find_map(|p| {
+                    if p.iter().any(|s| s == NOTIFICATIONS_APPLET) {
+                        return Some((
+                            match self.panel_config.anchor {
+                                PanelAnchor::Top => Anchor::TOP.union(Anchor::RIGHT),
+                                PanelAnchor::Bottom => Anchor::BOTTOM.union(Anchor::RIGHT),
+                                PanelAnchor::Left => Anchor::LEFT.union(Anchor::BOTTOM),
+                                PanelAnchor::Right => Anchor::RIGHT.union(Anchor::BOTTOM),
+                            },
+                            match self.panel_config.output {
+                                CosmicPanelOuput::Name(ref n) => Some(n.clone()),
+                                _ => None,
+                            },
+                        ));
+                    }
+                    None
+                })
+            })
+            .or_else(|| {
+                self.panel_config.plugins_center().iter().find_map(|p| {
+                    if p.iter().any(|s| s == NOTIFICATIONS_APPLET) {
+                        return Some((
+                            match self.panel_config.anchor {
+                                PanelAnchor::Top => Anchor::TOP,
+                                PanelAnchor::Bottom => Anchor::BOTTOM,
+                                PanelAnchor::Left => Anchor::LEFT,
+                                PanelAnchor::Right => Anchor::RIGHT,
+                            },
+                            match self.panel_config.output {
+                                CosmicPanelOuput::Name(ref n) => Some(n.clone()),
+                                _ => None,
+                            },
+                        ));
+                    }
+                    None
+                })
+            })
+            .or_else(|| {
+                self.dock_config.plugins_left().iter().find_map(|p| {
+                    if p.iter().any(|s| s == NOTIFICATIONS_APPLET) {
+                        return Some((
+                            match self.dock_config.anchor {
+                                PanelAnchor::Top => Anchor::TOP.union(Anchor::LEFT),
+                                PanelAnchor::Bottom => Anchor::BOTTOM.union(Anchor::LEFT),
+                                PanelAnchor::Left => Anchor::LEFT.union(Anchor::TOP),
+                                PanelAnchor::Right => Anchor::RIGHT.union(Anchor::TOP),
+                            },
+                            match self.dock_config.output {
+                                CosmicPanelOuput::Name(ref n) => Some(n.clone()),
+                                _ => None,
+                            },
+                        ));
+                    }
+                    None
+                })
+            })
+            .or_else(|| {
+                self.dock_config.plugins_right().iter().find_map(|p| {
+                    if p.iter().any(|s| s == NOTIFICATIONS_APPLET) {
+                        return Some((
+                            match self.dock_config.anchor {
+                                PanelAnchor::Top => Anchor::TOP.union(Anchor::RIGHT),
+                                PanelAnchor::Bottom => Anchor::BOTTOM.union(Anchor::RIGHT),
+                                PanelAnchor::Left => Anchor::TOP.union(Anchor::BOTTOM),
+                                PanelAnchor::Right => Anchor::RIGHT.union(Anchor::BOTTOM),
+                            },
+                            match self.dock_config.output {
+                                CosmicPanelOuput::Name(ref n) => Some(n.clone()),
+                                _ => None,
+                            },
+                        ));
+                    }
+                    None
+                })
+            })
+            .or_else(|| {
+                self.dock_config.plugins_center().iter().find_map(|p| {
+                    if p.iter().any(|s| s == NOTIFICATIONS_APPLET) {
+                        return Some((
+                            match self.dock_config.anchor {
+                                PanelAnchor::Top => Anchor::TOP,
+                                PanelAnchor::Bottom => Anchor::BOTTOM,
+                                PanelAnchor::Left => Anchor::LEFT,
+                                PanelAnchor::Right => Anchor::RIGHT,
+                            },
+                            match self.dock_config.output {
+                                CosmicPanelOuput::Name(ref n) => Some(n.clone()),
+                                _ => None,
+                            },
+                        ));
+                    }
+                    None
+                })
+            })
+            .unwrap_or((Anchor::TOP, None))
+    }
+
     fn push_notification(
         &mut self,
         notification: Notification,
@@ -116,9 +244,9 @@ impl CosmicNotifications {
         } else {
             iced::Command::perform(
                 tokio::time::sleep(Duration::from_millis(if timeout < 0 {
-                    timeout.max(10000) as u64
-                } else {
                     5000
+                } else {
+                    timeout.max(10000) as u64
                 })),
                 move |_| cosmic::app::message::app(Message::Timeout(notification.id)),
             )
@@ -126,10 +254,11 @@ impl CosmicNotifications {
 
         if self.active_notifications.is_empty() && !self.config.do_not_disturb {
             info!("Creating layer surface");
+            let (anchor, _output) = self.anchor.clone().unwrap_or((Anchor::TOP, None));
             self.active_surface = true;
             commands.push(get_layer_surface(SctkLayerSurfaceSettings {
                 id: WINDOW_ID.clone(),
-                anchor: Anchor::TOP,
+                anchor,
                 exclusive_zone: 0,
                 keyboard_interactivity: KeyboardInteractivity::None,
                 namespace: "notifications".to_string(),
@@ -139,6 +268,7 @@ impl CosmicNotifications {
                     bottom: 0,
                     left: 0,
                 },
+                output: IcedOutput::Active, // TODO should we only create the notification on the output the applet is on?
                 size_limits: Limits::NONE
                     .min_width(300.0)
                     .min_height(1.0)
@@ -256,6 +386,14 @@ impl cosmic::Application for CosmicNotifications {
             }
             Message::Config(config) => {
                 self.config = config;
+            }
+            Message::PanelConfig(c) => {
+                self.panel_config = c;
+                self.anchor = Some(self.anchor_for_notification_applet());
+            }
+            Message::DockConfig(c) => {
+                self.dock_config = c;
+                self.anchor = Some(self.anchor_for_notification_applet());
             }
         }
         Command::none()
@@ -439,6 +577,28 @@ impl cosmic::Application for CosmicNotifications {
                             tracing::error!("{:?}", err);
                         }
                         Message::Config(config)
+                    }
+                }),
+                config_subscription(0, "com.system76.CosmicPanel.Panel".into(), 1).map(|(_, e)| {
+                    match e {
+                        Ok(config) => Message::PanelConfig(config),
+                        Err((errors, config)) => {
+                            for why in errors {
+                                tracing::error!(?why, "panel config load error");
+                            }
+                            Message::PanelConfig(config)
+                        }
+                    }
+                }),
+                config_subscription(0, "com.system76.CosmicPanel.Dock".into(), 1).map(|(_, e)| {
+                    match e {
+                        Ok(config) => Message::DockConfig(config),
+                        Err((errors, config)) => {
+                            for why in errors {
+                                tracing::error!(?why, "dock config load error");
+                            }
+                            Message::DockConfig(config)
+                        }
                     }
                 }),
                 notifications::notifications().map(Message::Notification),
