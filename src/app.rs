@@ -1,6 +1,6 @@
 use crate::subscriptions::notifications;
 use cosmic::app::{Core, Settings};
-use cosmic::cosmic_config::{config_subscription, Config, CosmicConfigEntry};
+use cosmic::cosmic_config::{Config, CosmicConfigEntry};
 use cosmic::iced::wayland::actions::layer_surface::{
     IcedMargin, IcedOutput, SctkLayerSurfaceSettings,
 };
@@ -64,7 +64,6 @@ enum Message {
     ActivateNotification(u32),
     Dismissed(u32),
     Notification(notifications::Event),
-    ClosedSurface(SurfaceId),
     Timeout(u32),
     Config(NotificationsConfig),
     PanelConfig(CosmicPanelConfig),
@@ -79,8 +78,9 @@ impl CosmicNotifications {
             .cards
             .iter()
             .enumerate()
-            .find_map(|(c_pos, n)| n.1.iter().position(|n| n.id == i).map(|j| (c_pos, j))) else {
-                warn!("Notification not found for id {i}");
+            .find_map(|(c_pos, n)| n.1.iter().position(|n| n.id == i).map(|j| (c_pos, j)))
+        else {
+            warn!("Notification not found for id {i}");
             return None;
         };
 
@@ -320,7 +320,7 @@ impl cosmic::Application for CosmicNotifications {
     fn init(core: Core, _flags: ()) -> (Self, Command<Message>) {
         let helper = Config::new(
             cosmic_notifications_config::ID,
-            NotificationsConfig::version(),
+            NotificationsConfig::VERSION,
         )
         .ok();
 
@@ -363,9 +363,6 @@ impl cosmic::Application for CosmicNotifications {
             // TODO
             Message::ActivateNotification(_) => {}
             Message::Notification(e) => match e {
-                notifications::Event::Ready(tx) => {
-                    self.notifications_tx = Some(tx);
-                }
                 notifications::Event::Notification(n) => {
                     return self.push_notification(n);
                 }
@@ -377,16 +374,14 @@ impl cosmic::Application for CosmicNotifications {
                         return c;
                     }
                 }
+                notifications::Event::Ready(tx) => {
+                    self.notifications_tx = Some(tx);
+                }
             },
 
             Message::Dismissed(id) => {
                 if let Some(c) = self.close(id, CloseReason::Dismissed) {
                     return c;
-                }
-            }
-            Message::ClosedSurface(id) => {
-                if id == WINDOW_ID.clone() {
-                    self.cards.clear();
                 }
             }
             Message::Timeout(id) => {
@@ -537,42 +532,30 @@ impl cosmic::Application for CosmicNotifications {
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch(
             vec![
-                config_subscription::<u64, NotificationsConfig>(
-                    0,
-                    cosmic_notifications_config::ID.into(),
-                    NotificationsConfig::version(),
-                )
-                .map(|(_, res)| match res {
-                    Ok(config) => Message::Config(config),
-                    Err((errors, config)) => {
-                        for err in errors {
-                            tracing::error!("{:?}", err);
+                self.core
+                    .watch_config(cosmic_notifications_config::ID.into())
+                    .map(|u| {
+                        for why in u.errors {
+                            tracing::error!(?why, "config load error");
                         }
-                        Message::Config(config)
-                    }
-                }),
-                config_subscription(0, "com.system76.CosmicPanel.Panel".into(), 1).map(|(_, e)| {
-                    match e {
-                        Ok(config) => Message::PanelConfig(config),
-                        Err((errors, config)) => {
-                            for why in errors {
-                                tracing::error!(?why, "panel config load error");
-                            }
-                            Message::PanelConfig(config)
+                        Message::Config(u.config)
+                    }),
+                self.core
+                    .watch_config("com.system76.CosmicPanel.Panel".into())
+                    .map(|u| {
+                        for why in u.errors {
+                            tracing::error!(?why, "panel config load error");
                         }
-                    }
-                }),
-                config_subscription(0, "com.system76.CosmicPanel.Dock".into(), 1).map(|(_, e)| {
-                    match e {
-                        Ok(config) => Message::DockConfig(config),
-                        Err((errors, config)) => {
-                            for why in errors {
-                                tracing::error!(?why, "dock config load error");
-                            }
-                            Message::DockConfig(config)
+                        Message::PanelConfig(u.config)
+                    }),
+                self.core
+                    .watch_config("com.system76.CosmicPanel.Dock".into())
+                    .map(|u| {
+                        for why in u.errors {
+                            tracing::error!(?why, "dock config load error");
                         }
-                    }
-                }),
+                        Message::DockConfig(u.config)
+                    }),
                 self.timeline
                     .as_subscription()
                     .map(|(_, now)| Message::Frame(now)),

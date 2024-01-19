@@ -1,6 +1,4 @@
-use cosmic_config::{
-    cosmic_config_derive::CosmicConfigEntry, Config, ConfigGet, ConfigSet, CosmicConfigEntry,
-};
+use cosmic_config::{cosmic_config_derive::CosmicConfigEntry, CosmicConfigEntry};
 
 pub const ID: &str = "com.system76.CosmicNotifications";
 
@@ -20,13 +18,8 @@ pub enum Anchor {
 #[derive(
     Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, CosmicConfigEntry,
 )]
+#[version = 1]
 pub struct NotificationsConfig {
     pub do_not_disturb: bool,
     pub anchor: Anchor,
-}
-
-impl NotificationsConfig {
-    pub fn version() -> u64 {
-        1
-    }
 }

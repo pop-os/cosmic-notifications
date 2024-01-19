@@ -7,22 +7,79 @@ use cosmic::{
     iced_futures::Subscription,
 };
 use cosmic_notifications_util::{CloseReason, Notification};
+use once_cell::sync::Lazy;
 use std::{collections::HashMap, fmt::Debug, num::NonZeroU32};
-use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tracing::{error, info, warn};
+use tokio::{
+    sync::{
+        mpsc::{channel, Receiver, Sender},
+        Mutex,
+    },
+    task::JoinHandle,
+};
+use tracing::{error, info};
 
 use zbus::{dbus_interface, Connection, ConnectionBuilder, SignalContext};
 
 use super::applet::NotificationsApplet;
 
+pub static CONNS: Lazy<Mutex<Option<Conns>>> = Lazy::new(|| Mutex::new(None));
+
+#[derive(Debug)]
+pub struct Conns {
+    notifications: Connection,
+    pub tx: Sender<Input>,
+    rx: Receiver<Input>,
+    _panel: Option<Connection>,
+}
+
+impl Conns {
+    pub async fn new() -> zbus::Result<Self> {
+        let (tx, rx) = channel(100);
+        let panel = match applet::setup_panel_conn(tx.clone()).await {
+            Ok(conn) => Some(conn),
+            Err(err) => {
+                error!("Failed to setup panel dbus server {}", err.to_string());
+                None
+            }
+        };
+
+        for _ in 0..5 {
+            if let Some(conn) = ConnectionBuilder::session()
+                .ok()
+                .and_then(|conn| conn.name("org.freedesktop.Notifications").ok())
+                .and_then(|conn| {
+                    conn.serve_at(
+                        "/org/freedesktop/Notifications",
+                        Notifications(tx.clone(), NonZeroU32::new(1).unwrap(), Vec::new()),
+                    )
+                    .ok()
+                })
+                .map(ConnectionBuilder::build)
+            {
+                if let Ok(conn) = conn.await {
+                    return Ok(Self {
+                        tx,
+                        notifications: conn,
+                        rx: rx,
+                        _panel: panel,
+                    });
+                }
+            } else {
+                error!("Failed to create connection at /org/freedesktop/Notifications");
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            }
+        }
+
+        Err(zbus::Error::Failure(
+            "Failed to create the dbus server".to_string(),
+        ))
+    }
+}
+
 #[derive(Debug)]
 pub enum State {
-    Starting,
-    Waiting {
-        notifications: Connection,
-        rx: Receiver<Input>,
-        panel: Option<Connection>,
-    },
+    Start,
+    Waiting,
     Finished,
 }
 
@@ -51,71 +108,49 @@ pub fn notifications() -> Subscription<Event> {
         std::any::TypeId::of::<SomeWorker>(),
         100,
         |mut output| async move {
-            let mut state = State::Starting;
+            let mut state = State::Start;
 
-            'outer: loop {
+            loop {
                 match &mut state {
-                    State::Starting => {
-                        // Create channel
-                        let (tx, rx) = channel(100);
-                        let panel = match applet::setup_panel_conn(tx.clone()).await {
-                            Ok(conn) => Some(conn),
-                            Err(err) => {
-                                error!("Failed to setup panel dbus server {}", err.to_string());
-                                None
-                            }
-                        };
-
-                        for _ in 0..5 {
-                            if let Some(conn) = ConnectionBuilder::session()
-                                .ok()
-                                .and_then(|conn| conn.name("org.freedesktop.Notifications").ok())
-                                .and_then(|conn| {
-                                    conn.serve_at(
-                                        "/org/freedesktop/Notifications",
-                                        Notifications(
-                                            tx.clone(),
-                                            NonZeroU32::new(1).unwrap(),
-                                            Vec::new(),
-                                        ),
-                                    )
-                                    .ok()
-                                })
-                                .map(ConnectionBuilder::build)
-                            {
-                                if let Ok(conn) = conn.await {
-                                    // Send the sender back to the application
+                    State::Start => {
+                        let mut guard = CONNS.lock().await;
+                        let Some(conns) = guard.as_mut() else {
+                            let handle: JoinHandle<zbus::Result<_>> = tokio::spawn(async move {
+                                let conns = Conns::new().await?;
+                                let tx = conns.tx.clone();
+                                *guard = Some(conns);
+                                Ok(tx)
+                            });
+                            match handle.await {
+                                Ok(Ok(tx)) => {
                                     _ = output.send(Event::Ready(tx)).await;
-
-                                    // We are ready to receive messages
-                                    state = State::Waiting {
-                                        notifications: conn,
-                                        rx,
-                                        panel,
-                                    };
-                                    continue 'outer;
+                                    state = State::Waiting;
                                 }
-                            } else {
-                                warn!(
-                                    "Failed to create connection at /org/freedesktop/Notifications"
-                                );
-                                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                            }
-                        }
+                                Ok(Err(err)) => {
+                                    error!("Failed to create connection {}", err);
+                                    state = State::Finished;
+                                }
+                                Err(err) => {
+                                    error!("Failed to create connection {}", err);
+                                    state = State::Finished;
+                                }
+                            };
 
-                        tracing::error!("Failed to create the dbus server");
-                        state = State::Finished;
+                            continue;
+                        };
+                        _ = output.send(Event::Ready(conns.tx.clone())).await;
+                        state = State::Waiting;
                     }
-                    State::Waiting {
-                        notifications,
-                        rx,
-                        panel: _,
-                    } => {
-                        // Read next input sent from `Application`
-                        if let Some(next) = rx.recv().await {
+                    State::Waiting => {
+                        let mut guard = CONNS.lock().await;
+                        let Some(conns) = guard.as_mut() else {
+                            state = State::Start;
+                            continue;
+                        };
+                        if let Some(next) = conns.rx.recv().await {
                             match next {
                                 Input::Closed(id, reason) => {
-                                    let object_server = notifications.object_server();
+                                    let object_server = conns.notifications.object_server();
                                     if let Ok(iface_ref) = object_server
                                         .interface::<_, Notifications>(
                                             "/org/freedesktop/Notifications",
@@ -139,8 +174,13 @@ pub fn notifications() -> Subscription<Event> {
                                 Input::CloseNotification(id) => {
                                     _ = output.send(Event::CloseNotification(id)).await;
 
-                                    let object_server = notifications.object_server();
-                                    let Ok(iface_ref) = object_server.interface::<_, Notifications>("/org/freedesktop/Notifications").await else {
+                                    let object_server = conns.notifications.object_server();
+                                    let Ok(iface_ref) = object_server
+                                        .interface::<_, Notifications>(
+                                            "/org/freedesktop/Notifications",
+                                        )
+                                        .await
+                                    else {
                                         continue;
                                     };
                                     if let Err(err) = Notifications::notification_closed(
@@ -154,8 +194,13 @@ pub fn notifications() -> Subscription<Event> {
                                     }
                                 }
                                 Input::Dismissed(id) => {
-                                    let object_server = notifications.object_server();
-                                    let Ok(iface_ref) = object_server.interface::<_, Notifications>("/org/freedesktop/Notifications").await else {
+                                    let object_server = conns.notifications.object_server();
+                                    let Ok(iface_ref) = object_server
+                                        .interface::<_, Notifications>(
+                                            "/org/freedesktop/Notifications",
+                                        )
+                                        .await
+                                    else {
                                         continue;
                                     };
                                     if let Err(err) = Notifications::notification_closed(
@@ -170,8 +215,13 @@ pub fn notifications() -> Subscription<Event> {
                                 }
                                 Input::AppletConn(c) => {
                                     info!("Pushing applet connection to list");
-                                    let object_server = notifications.object_server();
-                                    let Ok(iface_ref) = object_server.interface::<_, Notifications>("/org/freedesktop/Notifications").await else {
+                                    let object_server = conns.notifications.object_server();
+                                    let Ok(iface_ref) = object_server
+                                        .interface::<_, Notifications>(
+                                            "/org/freedesktop/Notifications",
+                                        )
+                                        .await
+                                    else {
                                         continue;
                                     };
                                     let mut iface = iface_ref.get_mut().await;
@@ -292,9 +342,15 @@ impl Notifications {
             for c in self.2.drain(..) {
                 info!("Sending notification to applet");
                 let object_server = c.object_server();
-                let Ok(Ok(iface_ref)) = tokio::time::timeout(tokio::time::Duration::from_millis(100), object_server.interface::<_, NotificationsApplet>("/com/system76/NotificationsApplet")).await else {
-                continue;
-            };
+                let Ok(Ok(iface_ref)) = tokio::time::timeout(
+                    tokio::time::Duration::from_millis(100),
+                    object_server
+                        .interface::<_, NotificationsApplet>("/com/system76/NotificationsApplet"),
+                )
+                .await
+                else {
+                    continue;
+                };
                 match tokio::time::timeout(
                     tokio::time::Duration::from_millis(500),
                     NotificationsApplet::notify(
