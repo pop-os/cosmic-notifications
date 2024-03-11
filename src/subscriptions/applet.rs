@@ -5,7 +5,7 @@ use std::{
 };
 use tokio::{net::UnixStream, sync::mpsc::Sender};
 use tracing::{error, info};
-use zbus::{dbus_interface, zvariant::OwnedFd, Connection, ConnectionBuilder, Guid, SignalContext};
+use zbus::{connection::Builder, interface, zvariant::OwnedFd, Connection, Guid, SignalContext};
 
 use super::notifications::Input;
 
@@ -19,9 +19,10 @@ pub async fn setup_panel_conn(tx: Sender<Input>) -> Result<Connection> {
     let guid = Guid::generate();
     let conn = tokio::time::timeout(
         tokio::time::Duration::from_secs(1),
-        ConnectionBuilder::socket(socket)
+        Builder::socket(socket)
             .p2p()
-            .server(&guid)
+            .server(guid)
+            .unwrap()
             .serve_at(
                 "/com/system76/NotificationsSocket",
                 NotificationsSocket { tx },
@@ -62,9 +63,9 @@ pub struct NotificationsSocket {
     pub tx: Sender<Input>,
 }
 
-#[dbus_interface(name = "com.system76.NotificationsSocket")]
+#[interface(name = "com.system76.NotificationsSocket")]
 impl NotificationsSocket {
-    #[dbus_interface(out_args("fd"))]
+    #[zbus(out_args("fd"))]
     async fn get_fd(&self) -> zbus::fdo::Result<OwnedFd> {
         let (mine, theirs) = std::os::unix::net::UnixStream::pair()
             .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
@@ -80,9 +81,10 @@ impl NotificationsSocket {
 
         let tx_clone = self.tx.clone();
         tokio::spawn(async move {
-            let conn = match ConnectionBuilder::socket(mine)
+            let conn = match Builder::socket(mine)
                 .p2p()
-                .server(&guid)
+                .server(guid)
+                .unwrap()
                 .serve_at("/com/system76/NotificationsApplet", NotificationsApplet)
             {
                 Ok(conn) => conn,
@@ -112,15 +114,15 @@ impl NotificationsSocket {
         let raw = theirs.into_raw_fd();
         info!("Sending fd to applet");
 
-        Ok(unsafe { zbus::zvariant::OwnedFd::from_raw_fd(raw) })
+        Ok(unsafe { zbus::zvariant::OwnedFd::from(std::os::fd::OwnedFd::from_raw_fd(raw)) })
     }
 }
 
 pub struct NotificationsApplet;
 
-#[dbus_interface(name = "com.system76.NotificationsApplet")]
+#[interface(name = "com.system76.NotificationsApplet")]
 impl NotificationsApplet {
-    #[dbus_interface(signal)]
+    #[zbus(signal)]
     pub async fn notify(
         signal_ctxt: &SignalContext<'_>,
         app_name: &str,

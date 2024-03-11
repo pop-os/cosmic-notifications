@@ -8,7 +8,7 @@ use cosmic::{
 };
 use cosmic_notifications_util::{CloseReason, Notification};
 use once_cell::sync::Lazy;
-use std::{collections::HashMap, fmt::Debug, num::NonZeroU32};
+use std::{collections::HashMap, fmt::Debug, hint, num::NonZeroU32};
 use tokio::{
     sync::{
         mpsc::{channel, Receiver, Sender},
@@ -326,6 +326,10 @@ impl Notifications {
         } else {
             replaces_id
         };
+        let hints_clone = hints
+            .iter()
+            .filter_map(|(k, v)| Some((*k, v.try_clone().ok()?)))
+            .collect();
         let n = Notification::new(
             app_name,
             id,
@@ -333,7 +337,7 @@ impl Notifications {
             summary,
             body,
             actions.clone(),
-            hints.clone(),
+            hints_clone,
             expire_timeout,
         );
 
@@ -351,6 +355,10 @@ impl Notifications {
                 else {
                     continue;
                 };
+                let hints_clone = hints
+                    .iter()
+                    .filter_map(|(k, v)| Some((*k, v.try_clone().ok()?)))
+                    .collect();
                 match tokio::time::timeout(
                     tokio::time::Duration::from_millis(500),
                     NotificationsApplet::notify(
@@ -361,7 +369,7 @@ impl Notifications {
                         summary,
                         body,
                         actions.clone(),
-                        hints.clone(),
+                        hints_clone,
                         expire_timeout,
                     ),
                 )

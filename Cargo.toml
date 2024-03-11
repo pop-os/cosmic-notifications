@@ -10,7 +10,7 @@ async-stream = "0.3.5"
 console-subscriber = "0.1.9"
 i18n-embed = { version = "0.13.4", features = ["fluent-system", "desktop-requester"] }
 i18n-embed-fl = "0.6.4"
-libcosmic = { git = "https://github.com/pop-os/libcosmic/", default-features = false, features = ["wayland", "tokio", "dbus-config"] }
+libcosmic = { git = "https://github.com/pop-os/libcosmic/", default-features = false, features = ["wayland", "tokio", "dbus-config"], branch = "zbus-4" }
 cosmic-time = { git = "https://github.com/pop-os/cosmic-time", default-features = false, features = ["wayland-libcosmic", "once_cell"] }
 # libcosmic = { path = "../libcosmic", default-features = false, features = ["wayland", "tokio"] }
 tracing = "0.1"
@@ -23,13 +23,17 @@ serde = { version = "1.0.152", features = ["derive"] }
 ron = "0.8"
 tokio = { version = "1.24.1", features = ["sync", "rt", "tracing", "macros", "net", "io-util"] }
 xdg = "2.4.1"
-zbus = {version = "3.13.1", features = ["tokio"]}
+zbus = {version = "4.1.2", features = ["tokio", "p2p"]}
 cosmic-notifications-util = { path = "./cosmic-notifications-util" }
 cosmic-notifications-config = { path = "./cosmic-notifications-config" }
 cosmic-panel-config = { git = "https://github.com/pop-os/cosmic-panel" }
 sendfd = { version = "0.4", features = ["tokio"] }
 bytemuck = "1.13.1"
 log-panics = { version = "2", features = ["with-backtrace"] }
+
+[patch."https://github.com/pop-os/libcosmic"]
+cosmic-config = { git = "https://github.com/pop-os/libcosmic//", branch = "zbus-4" }
+libcosmic = { git = "https://github.com/pop-os/libcosmic//", branch = "zbus-4" }
 
 [workspace]
 members = ["cosmic-notifications-util", "cosmic-notifications-config"]
