@@ -17,7 +17,7 @@ fn main() -> anyhow::Result<()> {
         .with(fmt::layer())
         .with(
             EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
+                .with_default_directive(LevelFilter::WARN.into())
                 .from_env_lossy(),
         )
         .try_init()?;
