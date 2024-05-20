@@ -8,7 +8,7 @@ use cosmic::{
 };
 use cosmic_notifications_util::{CloseReason, Notification};
 use once_cell::sync::Lazy;
-use std::{collections::HashMap, fmt::Debug, hint, num::NonZeroU32};
+use std::{collections::HashMap, fmt::Debug, num::NonZeroU32};
 use tokio::{
     sync::{
         mpsc::{channel, Receiver, Sender},
@@ -16,9 +16,9 @@ use tokio::{
     },
     task::JoinHandle,
 };
-use tracing::{error, info};
+use tracing::error;
 
-use zbus::{dbus_interface, Connection, ConnectionBuilder, SignalContext};
+use zbus::{interface, Connection, ConnectionBuilder, SignalContext};
 
 use super::applet::NotificationsApplet;
 
@@ -214,7 +214,6 @@ pub fn notifications() -> Subscription<Event> {
                                     }
                                 }
                                 Input::AppletConn(c) => {
-                                    info!("Pushing applet connection to list");
                                     let object_server = conns.notifications.object_server();
                                     let Ok(iface_ref) = object_server
                                         .interface::<_, Notifications>(
@@ -226,7 +225,6 @@ pub fn notifications() -> Subscription<Event> {
                                     };
                                     let mut iface = iface_ref.get_mut().await;
                                     iface.2.push(c);
-                                    info!("Applet connection added to list");
                                 }
                             }
                         } else {
@@ -245,7 +243,7 @@ pub fn notifications() -> Subscription<Event> {
 
 pub struct Notifications(Sender<Input>, NonZeroU32, Vec<Connection>);
 
-#[dbus_interface(name = "org.freedesktop.Notifications")]
+#[interface(name = "org.freedesktop.Notifications")]
 impl Notifications {
     async fn close_notification(&self, id: u32) {
         if let Err(err) = self.0.send(Input::CloseNotification(id)).await {
@@ -277,7 +275,7 @@ impl Notifications {
         ]
     }
 
-    #[dbus_interface(out_args("name", "vendor", "version", "spec_version"))]
+    #[zbus(out_args("name", "vendor", "version", "spec_version"))]
     async fn get_server_information(
         &self,
     ) -> (&'static str, &'static str, &'static str, &'static str) {
@@ -344,7 +342,6 @@ impl Notifications {
         if !n.transient() {
             let mut new_conns = Vec::with_capacity(self.2.len());
             for c in self.2.drain(..) {
-                info!("Sending notification to applet");
                 let object_server = c.object_server();
                 let Ok(Ok(iface_ref)) = tokio::time::timeout(
                     tokio::time::Duration::from_millis(100),
@@ -381,7 +378,6 @@ impl Notifications {
                 }
                 drop(object_server);
                 new_conns.push(c);
-                info!("Sent notification to applet");
             }
             self.2 = new_conns;
         }
@@ -401,7 +397,7 @@ impl Notifications {
         id
     }
 
-    #[dbus_interface(signal)]
+    #[zbus(signal)]
     async fn action_invoked(
         signal_ctxt: &SignalContext<'_>,
         id: u32,
@@ -420,7 +416,7 @@ impl Notifications {
     /// 3 - The notification was closed by a call to CloseNotification.
     ///
     /// 4 - Undefined/reserved reasons.
-    #[dbus_interface(signal)]
+    #[zbus(signal)]
     async fn notification_closed(
         signal_ctxt: &SignalContext<'_>,
         id: u32,

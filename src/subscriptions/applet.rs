@@ -15,7 +15,6 @@ use std::os::unix::io::FromRawFd;
 
 pub async fn setup_panel_conn(tx: Sender<Input>) -> Result<Connection> {
     let socket = setup_panel_socket()?;
-    info!("Got UnixStream");
     let guid = Guid::generate();
     let conn = tokio::time::timeout(
         tokio::time::Duration::from_secs(1),
@@ -30,7 +29,6 @@ pub async fn setup_panel_conn(tx: Sender<Input>) -> Result<Connection> {
             .build(),
     )
     .await??;
-    info!("Created panel connection");
 
     Ok(conn)
 }

@@ -7,12 +7,12 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0"
 async-stream = "0.3.5"
-console-subscriber = "0.1.9"
-i18n-embed = { version = "0.13.4", features = [
+console-subscriber = "0.2.0"
+i18n-embed = { version = "0.14.1", features = [
     "fluent-system",
     "desktop-requester",
 ] }
-i18n-embed-fl = "0.6.4"
+i18n-embed-fl = "0.8.0"
 libcosmic = { git = "https://github.com/pop-os/libcosmic/", default-features = false, features = [
     "wayland",
     "tokio",
@@ -28,7 +28,7 @@ nix = "0.26.2"
 once_cell = "1.17"
 tracing-subscriber = "0.3.17"
 tracing-journald = "0.3.0"
-rust-embed = "6.3.0"
+rust-embed = "8.4.0"
 serde = { version = "1.0.152", features = ["derive"] }
 ron = "0.8"
 tokio = { version = "1.24.1", features = [
@@ -49,13 +49,13 @@ bytemuck = "1.13.1"
 log-panics = { version = "2", features = ["with-backtrace"] }
 
 # remove after cosmic-panel is updated to use zbus v4
-[patch."https://github.com/pop-os/libcosmic"]
-cosmic-config = { git = "https://github.com/pop-os/libcosmic//" }
-libcosmic = { git = "https://github.com/pop-os/libcosmic//" }
+# [patch."https://github.com/pop-os/libcosmic"]
+# cosmic-config = { git = "https://github.com/pop-os/libcosmic//" }
+# libcosmic = { git = "https://github.com/pop-os/libcosmic//" }
 
 [workspace]
 members = ["cosmic-notifications-util", "cosmic-notifications-config"]
 
 # [patch.'https://github.com/smithay/client-toolkit/']
 # smithay-client-toolkit = { git = "https://github.com/smithay/client-toolkit//", rev = "3bed072" }
-cosmic-config = { git = "https://github.com/pop-os/libcosmic//" }
+# cosmic-config = { git = "https://github.com/pop-os/libcosmic//" }
