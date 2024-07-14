@@ -8,7 +8,8 @@ base-dir := absolute_path(clean(rootdir / prefix))
 
 export INSTALL_DIR := base-dir / 'share'
 
-bin-src := 'target' / 'release' / name
+cargo-target-dir := env('CARGO_TARGET_DIR', 'target')
+bin-src := cargo-target-dir / 'release' / name
 bin-dst := base-dir / 'bin' / name
 
 # Use lld linker if available
@@ -50,11 +51,11 @@ check-json: (check '--message-format=json')
 
 # Runs after compiling a release build
 run: build-release
-    ./target/release/cosmic-notifications
+    {{cargo-target-dir}}/release/cosmic-notifications
 
 # Build and run with tokio-console enabled
 tokio-console: build-release
-    env TOKIO_CONSOLE=1 ./target/release/cosmic-notifications
+    env TOKIO_CONSOLE=1 {{cargo-target-dir}}/release/cosmic-notifications
 
 # Installs files
 install:
