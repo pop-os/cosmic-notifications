@@ -13,16 +13,25 @@ use crate::config::VERSION;
 
 fn main() -> anyhow::Result<()> {
     let trace = tracing_subscriber::registry();
+
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::WARN.into())
+        .from_env_lossy();
     #[cfg(feature = "systemd")]
-    let trace = trace.with(tracing_journald::layer()?);
-    trace
-        .with(fmt::layer())
-        .with(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::WARN.into())
-                .from_env_lossy(),
-        )
-        .try_init()?;
+    if let Ok(journald) = tracing_journald::layer() {
+        trace
+            .with(journald)
+            .with(fmt::layer())
+            .with(env_filter)
+            .try_init()?;
+    } else {
+        trace.with(fmt::layer()).with(env_filter).try_init()?;
+        tracing::warn!("Failed to connect to journald")
+    }
+
+    #[cfg(not(feature = "systemd"))]
+    trace.with(fmt::layer()).with(env_filter).try_init()?;
+
     log_panics::init();
 
     info!("cosmic-notifications ({})", APP_ID);
