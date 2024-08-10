@@ -12,8 +12,10 @@ use localize::localize;
 use crate::config::VERSION;
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::registry()
-        .with(tracing_journald::layer()?)
+    let trace = tracing_subscriber::registry();
+    #[cfg(feature = "systemd")]
+    let trace = trace.with(tracing_journald::layer()?);
+    trace
         .with(fmt::layer())
         .with(
             EnvFilter::builder()
