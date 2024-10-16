@@ -1,1 +1,1 @@
-app-name = Cosmic обавештења
+app-name = COSMIC обавештења
