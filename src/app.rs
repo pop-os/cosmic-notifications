@@ -1,32 +1,30 @@
 use crate::subscriptions::notifications;
 use cosmic::app::{Core, Settings};
 use cosmic::cosmic_config::{Config, CosmicConfigEntry};
-use cosmic::iced::wayland::actions::layer_surface::{
+use cosmic::iced::platform_specific::runtime::wayland::layer_surface::{
     IcedMargin, IcedOutput, SctkLayerSurfaceSettings,
 };
-use cosmic::iced::wayland::layer_surface::{
+use cosmic::iced::platform_specific::shell::wayland::commands::layer_surface::{
     destroy_layer_surface, get_layer_surface, Anchor, KeyboardInteractivity,
 };
-use cosmic::iced::widget::{container, text, Column};
+use cosmic::iced::widget::{container, text};
 use cosmic::iced::{self, Length, Limits, Subscription};
 use cosmic::iced_runtime::core::window::Id as SurfaceId;
-use cosmic::iced_style::application;
 use cosmic::iced_widget::{column, row, vertical_space};
-use cosmic::widget::button;
-use cosmic::widget::icon;
-use cosmic::{app::Command, Element, Theme};
+use cosmic::widget::{autosize, button, icon};
+use cosmic::{app::Task, Element};
 use cosmic_notifications_config::NotificationsConfig;
 use cosmic_notifications_util::{CloseReason, Notification};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, PanelAnchor};
 use cosmic_time::{anim, id, Instant, Timeline};
-use iced::wayland::Appearance;
-use iced::{Alignment, Color};
+use iced::Alignment;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
+static AUTOSIZE_ID: Lazy<iced::id::Id> = Lazy::new(|| iced::id::Id::new("autosize"));
 static WINDOW_ID: Lazy<SurfaceId> = Lazy::new(|| SurfaceId::unique());
 static NOTIFICATIONS_APPLET: &str = "com.system76.CosmicAppletNotifications";
 static NOTIFICATIONS_ID: Lazy<id::Cards> = Lazy::new(|| id::Cards::new("Notifications"));
@@ -73,7 +71,7 @@ enum Message {
 }
 
 impl CosmicNotifications {
-    fn close(&mut self, i: u32, reason: CloseReason) -> Option<Command<Message>> {
+    fn close(&mut self, i: u32, reason: CloseReason) -> Option<Task<Message>> {
         let Some((c_pos, _)) = self.cards.iter().enumerate().find(|(_, n)| n.id == i) else {
             return None;
         };
@@ -103,7 +101,7 @@ impl CosmicNotifications {
             self.active_surface = false;
             Some(destroy_layer_surface(WINDOW_ID.clone()))
         } else {
-            Some(Command::none())
+            Some(Task::none())
         }
     }
 
@@ -229,7 +227,7 @@ impl CosmicNotifications {
     fn push_notification(
         &mut self,
         notification: Notification,
-    ) -> Command<<CosmicNotifications as cosmic::app::Application>::Message> {
+    ) -> Task<<CosmicNotifications as cosmic::app::Application>::Message> {
         let mut timeout = u32::try_from(notification.expire_timeout).unwrap_or(3000);
         let max_timeout = if notification.urgency() == 2 {
             self.config.max_timeout_urgent
@@ -241,19 +239,19 @@ impl CosmicNotifications {
         .unwrap_or(u32::try_from(notification.expire_timeout).unwrap_or(3000));
         timeout = timeout.min(max_timeout);
 
-        let mut commands = vec![if timeout > 0 {
-            iced::Command::perform(
+        let mut tasks = vec![if timeout > 0 {
+            iced::Task::perform(
                 tokio::time::sleep(Duration::from_millis(timeout as u64)),
                 move |_| cosmic::app::message::app(Message::Timeout(notification.id)),
             )
         } else {
-            iced::Command::none()
+            iced::Task::none()
         }];
 
         if self.cards.is_empty() && !self.config.do_not_disturb {
             let (anchor, _output) = self.anchor.clone().unwrap_or((Anchor::TOP, None));
             self.active_surface = true;
-            commands.push(get_layer_surface(SctkLayerSurfaceSettings {
+            tasks.push(get_layer_surface(SctkLayerSurfaceSettings {
                 id: WINDOW_ID.clone(),
                 anchor,
                 exclusive_zone: 0,
@@ -265,6 +263,7 @@ impl CosmicNotifications {
                     bottom: 8,
                     left: 8,
                 },
+                size: Some((Some(300), Some(1))),
                 output: IcedOutput::Active, // TODO should we only create the notification on the output the applet is on?
                 size_limits: Limits::NONE
                     .min_width(300.0)
@@ -272,7 +271,7 @@ impl CosmicNotifications {
                     .max_height(1920.0)
                     .max_width(300.0),
                 ..Default::default()
-            }))
+            }));
         };
 
         self.sort_notifications();
@@ -294,7 +293,7 @@ impl CosmicNotifications {
         insert_sorted(notification);
         self.group_notifications();
 
-        iced::Command::batch(commands)
+        iced::Task::batch(tasks)
     }
 
     fn group_notifications(&mut self) {
@@ -359,10 +358,10 @@ impl CosmicNotifications {
             });
     }
 
-    fn replace_notification(&mut self, notification: Notification) -> Command<Message> {
+    fn replace_notification(&mut self, notification: Notification) -> Task<Message> {
         if let Some(notif) = self.cards.iter_mut().find(|n| n.id == notification.id) {
             *notif = notification;
-            Command::none()
+            Task::none()
         } else {
             tracing::error!("Notification not found... pushing instead");
             self.push_notification(notification)
@@ -376,7 +375,7 @@ impl cosmic::Application for CosmicNotifications {
     type Flags = ();
     const APP_ID: &'static str = "com.system76.CosmicNotifications";
 
-    fn init(core: Core, _flags: ()) -> (Self, Command<Message>) {
+    fn init(core: Core, _flags: ()) -> (Self, Task<Message>) {
         let helper = Config::new(
             cosmic_notifications_config::ID,
             NotificationsConfig::VERSION,
@@ -400,7 +399,7 @@ impl cosmic::Application for CosmicNotifications {
                 config,
                 ..Default::default()
             },
-            Command::none(),
+            Task::none(),
         )
     }
 
@@ -417,7 +416,7 @@ impl cosmic::Application for CosmicNotifications {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn update(&mut self, message: Message) -> Command<Self::Message> {
+    fn update(&mut self, message: Message) -> Task<Self::Message> {
         match message {
             // TODO
             Message::ActivateNotification(_) => {}
@@ -464,21 +463,17 @@ impl cosmic::Application for CosmicNotifications {
             }
             Message::Ignore => {}
         }
-        Command::none()
+        Task::none()
     }
 
     #[allow(clippy::too_many_lines)]
     fn view_window(&self, _: SurfaceId) -> Element<Message> {
         if self.cards.is_empty() {
-            return container(vertical_space(Length::Fixed(1.0)))
-                .width(Length::Fixed(1.0))
-                .height(Length::Fixed(1.0))
-                .center_x()
-                .center_y()
+            return container(vertical_space().height(Length::Fixed(1.0)))
+                .center_x(Length::Fixed(1.0))
+                .center_y(Length::Fixed(1.0))
                 .into();
         }
-
-        let mut notifs: Vec<Element<_>> = Vec::with_capacity(self.cards.len());
 
         let notif_elems: Vec<_> = self
             .cards
@@ -496,13 +491,13 @@ impl cosmic::Application for CosmicNotifications {
                 .size(12)
                 .width(Length::Fill);
 
-                let close_notif = button(
+                let close_notif = button::custom(
                     icon::from_name("window-close-symbolic")
                         .size(16)
                         .symbolic(true),
                 )
                 .on_press(Message::Dismissed(n.id))
-                .style(cosmic::theme::Button::Text);
+                .class(cosmic::theme::Button::Text);
                 let e = Element::from(
                     column!(
                         match n.image() {
@@ -513,7 +508,7 @@ impl cosmic::Application for CosmicNotifications {
                                     close_notif
                                 ]
                                 .spacing(8)
-                                .align_items(Alignment::Center)
+                                .align_y(Alignment::Center)
                             }
                             Some(cosmic_notifications_util::Image::Name(name)) => {
                                 row![
@@ -522,7 +517,7 @@ impl cosmic::Application for CosmicNotifications {
                                     close_notif
                                 ]
                                 .spacing(8)
-                                .align_items(Alignment::Center)
+                                .align_y(Alignment::Center)
                             }
                             Some(cosmic_notifications_util::Image::Data {
                                 width,
@@ -537,11 +532,11 @@ impl cosmic::Application for CosmicNotifications {
                                     close_notif
                                 ]
                                 .spacing(8)
-                                .align_items(Alignment::Center)
+                                .align_y(Alignment::Center)
                             }
                             None => row![app_name, close_notif]
                                 .spacing(8)
-                                .align_items(Alignment::Center),
+                                .align_y(Alignment::Center),
                         },
                         column![
                             text(n.summary.lines().next().unwrap_or_default())
@@ -571,19 +566,14 @@ impl cosmic::Application for CosmicNotifications {
             "",
             None,
             true,
-        );
-        notifs.push(card_list.into());
-
-        container(
-            Column::with_children(notifs)
-                .spacing(8)
-                .width(Length::Shrink)
-                .height(Length::Shrink)
-                .align_items(Alignment::Center),
         )
-        .width(Length::Shrink)
-        .height(Length::Shrink)
-        .into()
+        .width(Length::Fixed(300.));
+
+        autosize::autosize(card_list, AUTOSIZE_ID.clone())
+            .min_height(100.)
+            .max_width(300.)
+            .max_height(1920.)
+            .into()
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -617,19 +607,8 @@ impl cosmic::Application for CosmicNotifications {
                     .as_subscription()
                     .map(|(_, now)| Message::Frame(now)),
                 notifications::notifications().map(Message::Notification),
-                // applet::panel().map(Message::Panel),
             ]
             .into_iter(),
         )
-    }
-
-    fn style(&self) -> Option<<Theme as application::StyleSheet>::Style> {
-        Some(<Theme as application::StyleSheet>::Style::Custom(Box::new(
-            |theme| Appearance {
-                background_color: Color::from_rgba(0.0, 0.0, 0.0, 0.0),
-                text_color: theme.cosmic().on_bg_color().into(),
-                icon_color: theme.cosmic().on_bg_color().into(),
-            },
-        )))
     }
 }

@@ -5,6 +5,15 @@ authors = ["Ashley Wulber <ashley@system76.com>"]
 edition = "2021"
 
 [dependencies]
+libcosmic = { git = "https://github.com/pop-os/libcosmic", default-features = false, features = [
+    "autosize",
+    "a11y",
+    "winit",
+    "multi-window",
+    "wayland",
+    "tokio",
+    "dbus-config",
+] }
 anyhow = "1.0"
 async-stream = "0.3.5"
 console-subscriber = "0.2.0"
@@ -13,13 +22,7 @@ i18n-embed = { version = "0.14.1", features = [
     "desktop-requester",
 ] }
 i18n-embed-fl = "0.8.0"
-libcosmic = { git = "https://github.com/pop-os/libcosmic/", default-features = false, features = [
-    "wayland",
-    "tokio",
-    "dbus-config",
-] }
 cosmic-time = { git = "https://github.com/pop-os/cosmic-time", default-features = false, features = [
-    "wayland-libcosmic",
     "once_cell",
 ] }
 # libcosmic = { path = "../libcosmic", default-features = false, features = ["wayland", "tokio"] }
