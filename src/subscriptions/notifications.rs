@@ -2,7 +2,7 @@ use crate::{config::VERSION, subscriptions::applet};
 use cosmic::{
     iced::{
         futures::{self, SinkExt},
-        subscription,
+        stream,
     },
     iced_futures::Subscription,
 };
@@ -104,10 +104,9 @@ pub enum Event {
 pub fn notifications() -> Subscription<Event> {
     struct SomeWorker;
 
-    subscription::channel(
+    Subscription::run_with_id(
         std::any::TypeId::of::<SomeWorker>(),
-        100,
-        |mut output| async move {
+        stream::channel(100, |mut output| async move {
             let mut state = State::Start;
 
             loop {
@@ -237,7 +236,7 @@ pub fn notifications() -> Subscription<Event> {
                     }
                 }
             }
-        },
+        }),
     )
 }
 
