@@ -15,7 +15,9 @@ use tokio::{
 };
 use tracing::error;
 
-use zbus::{Connection, ConnectionBuilder, SignalContext, interface};
+use zbus::{
+    Connection, connection::Builder as ConnectionBuilder, interface, object_server::SignalEmitter,
+};
 
 use super::applet::NotificationsApplet;
 
@@ -137,14 +139,14 @@ impl Machine<Waiting> {
                         };
 
                         if let Err(err) =
-                            Notifications::activation_token(iface_ref.signal_context(), id, &token)
+                            Notifications::activation_token(iface_ref.signal_emitter(), id, &token)
                                 .await
                         {
                             error!("Failed to signal notification with token {}", err);
                         }
 
                         if let Err(err) =
-                            Notifications::action_invoked(iface_ref.signal_context(), id, &action)
+                            Notifications::action_invoked(iface_ref.signal_emitter(), id, &action)
                                 .await
                         {
                             error!("Failed to signal activated notification {}", err);
@@ -158,7 +160,7 @@ impl Machine<Waiting> {
                             .await
                         {
                             _ = Notifications::notification_closed(
-                                iface_ref.signal_context(),
+                                iface_ref.signal_emitter(),
                                 id,
                                 reason as u32,
                             )
@@ -182,7 +184,7 @@ impl Machine<Waiting> {
                             continue;
                         };
                         if let Err(err) =
-                            Notifications::notification_closed(iface_ref.signal_context(), id, 3)
+                            Notifications::notification_closed(iface_ref.signal_emitter(), id, 3)
                                 .await
                         {
                             error!("Failed to signal close notification {}", err);
@@ -197,7 +199,7 @@ impl Machine<Waiting> {
                             continue;
                         };
                         if let Err(err) =
-                            Notifications::notification_closed(iface_ref.signal_context(), id, 2)
+                            Notifications::notification_closed(iface_ref.signal_emitter(), id, 2)
                                 .await
                         {
                             error!("Failed to signal dismissed notification {}", err);
@@ -398,7 +400,7 @@ impl Notifications {
                 match tokio::time::timeout(
                     tokio::time::Duration::from_millis(500),
                     NotificationsApplet::notify(
-                        iface_ref.signal_context(),
+                        iface_ref.signal_emitter(),
                         app_name,
                         id,
                         app_icon,
@@ -415,7 +417,6 @@ impl Notifications {
                     Err(err) => error!("Failed to notify applet of notification {}", err),
                     Ok(_) => {}
                 }
-                drop(object_server);
                 new_conns.push(c);
             }
             self.2 = new_conns;
@@ -438,14 +439,14 @@ impl Notifications {
 
     #[zbus(signal)]
     async fn action_invoked(
-        signal_ctxt: &SignalContext<'_>,
+        signal_ctxt: &SignalEmitter<'_>,
         id: u32,
         action_key: &str,
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
     async fn activation_token(
-        signal_ctxt: &SignalContext<'_>,
+        signal_ctxt: &SignalEmitter<'_>,
         id: u32,
         activation_token: &str,
     ) -> zbus::Result<()>;
@@ -464,7 +465,7 @@ impl Notifications {
     /// 4 - Undefined/reserved reasons.
     #[zbus(signal)]
     async fn notification_closed(
-        signal_ctxt: &SignalContext<'_>,
+        signal_ctxt: &SignalEmitter<'_>,
         id: u32,
         reason: u32,
     ) -> zbus::Result<()>;
