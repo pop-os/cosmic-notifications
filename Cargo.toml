@@ -63,6 +63,7 @@ default = ["systemd"]
 [workspace]
 members = ["cosmic-notifications-util", "cosmic-notifications-config"]
 
-# [patch.'https://github.com/smithay/client-toolkit/']
+[patch.'https://github.com/smithay/client-toolkit/']
+smithay-client-toolkit = { version = "0.19.2" }
 # smithay-client-toolkit = { git = "https://github.com/smithay/client-toolkit//", rev = "3bed072" }
 # cosmic-config = { git = "https://github.com/pop-os/libcosmic//" }
