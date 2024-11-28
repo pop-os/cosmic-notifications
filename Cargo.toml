@@ -43,7 +43,7 @@ tokio = { version = "1.24.1", features = [
     "io-util",
 ] }
 xdg = "2.4.1"
-zbus = { version = "4.2.1", features = ["tokio", "p2p"] }
+zbus = { version = "5.1.0", features = ["tokio", "p2p"] }
 cosmic-notifications-util = { path = "./cosmic-notifications-util" }
 cosmic-notifications-config = { path = "./cosmic-notifications-config" }
 cosmic-panel-config = { git = "https://github.com/pop-os/cosmic-panel" }

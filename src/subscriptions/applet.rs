@@ -5,7 +5,7 @@ use std::{
 };
 use tokio::{net::UnixStream, sync::mpsc::Sender};
 use tracing::{error, info};
-use zbus::{connection::Builder, interface, zvariant::OwnedFd, Connection, Guid, SignalContext};
+use zbus::{connection::Builder, object_server::SignalEmitter, interface, zvariant::OwnedFd, Connection, Guid};
 
 use super::notifications::Input;
 
@@ -122,7 +122,7 @@ pub struct NotificationsApplet;
 impl NotificationsApplet {
     #[zbus(signal)]
     pub async fn notify(
-        signal_ctxt: &SignalContext<'_>,
+        signal_ctxt: &SignalEmitter<'_>,
         app_name: &str,
         replaces_id: u32,
         app_icon: &str,
