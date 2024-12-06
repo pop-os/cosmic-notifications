@@ -4,7 +4,9 @@ pub mod image;
 pub use image::*;
 
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt, path::PathBuf, time::SystemTime};
+use std::{
+    collections::HashMap, convert::Infallible, fmt, path::PathBuf, str::FromStr, time::SystemTime,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Notification {
@@ -33,7 +35,7 @@ impl Notification {
     ) -> Self {
         let actions = actions
             .chunks_exact(2)
-            .map(|a| (ActionId::from(a[0]), a[1].to_string()))
+            .map(|a| (a[0].parse().unwrap(), a[1].to_string()))
             .collect();
 
         let hints = hints
@@ -155,13 +157,14 @@ impl fmt::Display for ActionId {
     }
 }
 
-impl From<&str> for ActionId {
-    fn from(s: &str) -> Self {
-        // TODO more actions
-        match s {
-            "default" => Self::Default,
-            s => Self::Custom(s.to_string()),
-        }
+impl FromStr for ActionId {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "default" => ActionId::Default,
+            s => ActionId::Custom(s.to_string()),
+        })
     }
 }
 
