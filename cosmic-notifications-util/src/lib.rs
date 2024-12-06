@@ -4,7 +4,7 @@ pub mod image;
 pub use image::*;
 
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, time::SystemTime};
+use std::{collections::HashMap, fmt, path::PathBuf, time::SystemTime};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Notification {
@@ -144,6 +144,15 @@ impl Notification {
 pub enum ActionId {
     Default,
     Custom(String),
+}
+
+impl fmt::Display for ActionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ActionId::Default => write!(f, "default"),
+            ActionId::Custom(value) => write!(f, "{}", value),
+        }
+    }
 }
 
 impl From<&str> for ActionId {

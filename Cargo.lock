@@ -1266,7 +1266,7 @@ dependencies = [
 [[package]]
 name = "cosmic-time"
 version = "0.4.0"
-source = "git+https://github.com/pop-os/cosmic-time#b1816cd260e1517d40f39d5fbdee44cd825ebdde"
+source = "git+https://github.com/pop-os/cosmic-time?branch=cards-update#f49fe6f0ce743196bb2a170d553800c0653280b8"
 dependencies = [
  "float-cmp",
  "libcosmic",
