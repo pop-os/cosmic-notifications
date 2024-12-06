@@ -24,7 +24,10 @@ i18n-embed = { version = "0.14.1", features = [
 i18n-embed-fl = "0.8.0"
 cosmic-time = { git = "https://github.com/pop-os/cosmic-time", default-features = false, features = [
     "once_cell",
-] }
+], branch = "cards-update" }
+# cosmic-time = { path = "../cosmic-time", default-features = false, features = [
+#     "once_cell",
+# ] }
 # libcosmic = { path = "../libcosmic", default-features = false, features = ["wayland", "tokio"] }
 tracing = "0.1"
 nix = "0.26.2"
