@@ -79,12 +79,12 @@ impl NotificationsSocket {
 
         let tx_clone = self.tx.clone();
         tokio::spawn(async move {
-            let conn = match Builder::socket(mine)
-                .p2p()
-                .server(guid)
-                .unwrap()
-                .serve_at("/com/system76/NotificationsApplet", NotificationsApplet)
-            {
+            let conn = match Builder::socket(mine).p2p().server(guid).unwrap().serve_at(
+                "/com/system76/NotificationsApplet",
+                NotificationsApplet {
+                    tx: tx_clone.clone(),
+                },
+            ) {
                 Ok(conn) => conn,
                 Err(err) => {
                     error!("Failed to create applet connection {}", err);
@@ -116,7 +116,9 @@ impl NotificationsSocket {
     }
 }
 
-pub struct NotificationsApplet;
+pub struct NotificationsApplet {
+    tx: Sender<Input>,
+}
 
 #[interface(name = "com.system76.NotificationsApplet")]
 impl NotificationsApplet {
@@ -132,4 +134,20 @@ impl NotificationsApplet {
         hints: HashMap<&str, zbus::zvariant::Value<'_>>,
         expire_timeout: i32,
     ) -> zbus::Result<()>;
+
+    pub async fn invoke_action(&self, id: u32, action: &str) -> zbus::fdo::Result<()> {
+        tracing::trace!("Received action from applet {id} {action}");
+        let res = self
+            .tx
+            .send(Input::AppletActivated {
+                id,
+                action: action.parse().unwrap(),
+            })
+            .await;
+        if let Err(err) = res {
+            tracing::error!("Failed to send action invoke message to channel. {id}");
+            return Err(zbus::fdo::Error::Failed(err.to_string()));
+        }
+        Ok(())
+    }
 }

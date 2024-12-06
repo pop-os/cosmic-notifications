@@ -6,7 +6,7 @@ use cosmic::{
     },
     iced_futures::Subscription,
 };
-use cosmic_notifications_util::{CloseReason, Notification};
+use cosmic_notifications_util::{ActionId, CloseReason, Notification};
 use once_cell::sync::Lazy;
 use std::{collections::HashMap, fmt::Debug, num::NonZeroU32};
 use tokio::{
@@ -85,6 +85,15 @@ pub enum State {
 
 #[derive(Debug, Clone)]
 pub enum Input {
+    Activated {
+        token: String,
+        id: u32,
+        action: String,
+    },
+    AppletActivated {
+        id: u32,
+        action: ActionId,
+    },
     Notification(Notification),
     Replace(Notification),
     CloseNotification(u32),
@@ -99,6 +108,7 @@ pub enum Event {
     Notification(Notification),
     Replace(Notification),
     CloseNotification(u32),
+    AppletActivated { id: u32, action: ActionId },
 }
 
 pub fn notifications() -> Subscription<Event> {
@@ -148,6 +158,38 @@ pub fn notifications() -> Subscription<Event> {
                         };
                         if let Some(next) = conns.rx.recv().await {
                             match next {
+                                Input::Activated { token, id, action } => {
+                                    let object_server = conns.notifications.object_server();
+                                    let Ok(iface_ref) = object_server
+                                        .interface::<_, Notifications>(
+                                            "/org/freedesktop/Notifications",
+                                        )
+                                        .await
+                                    else {
+                                        continue;
+                                    };
+
+                                    if let Err(err) = Notifications::activation_token(
+                                        iface_ref.signal_context(),
+                                        id,
+                                        &token,
+                                    )
+                                    .await
+                                    {
+                                        error!("Failed to signal notification with token {}", err);
+                                    }
+
+                                    if let Err(err) = Notifications::action_invoked(
+                                        iface_ref.signal_context(),
+                                        id,
+                                        &action,
+                                    )
+                                    .await
+                                    {
+                                        error!("Failed to signal activated notification {}", err);
+                                    }
+                                    tracing::trace!("Activated application");
+                                }
                                 Input::Closed(id, reason) => {
                                     let object_server = conns.notifications.object_server();
                                     if let Ok(iface_ref) = object_server
@@ -225,6 +267,13 @@ pub fn notifications() -> Subscription<Event> {
                                     let mut iface = iface_ref.get_mut().await;
                                     iface.2.push(c);
                                 }
+                                Input::AppletActivated { id, action } => {
+                                    if let Err(err) =
+                                        output.send(Event::AppletActivated { id, action }).await
+                                    {
+                                        tracing::error!("Failed to send activation action for {id} to subscription channel {err}");
+                                    }
+                                }
                             }
                         } else {
                             // The channel was closed, so we are done
@@ -265,8 +314,8 @@ impl Notifications {
             "body",
             "icon-static",
             "persistence",
-            // TODO support these
             "actions",
+            // TODO support these
             "action-icons",
             "body-markup",
             "body-hyperlinks",
@@ -401,6 +450,13 @@ impl Notifications {
         signal_ctxt: &SignalContext<'_>,
         id: u32,
         action_key: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    async fn activation_token(
+        signal_ctxt: &SignalContext<'_>,
+        id: u32,
+        activation_token: &str,
     ) -> zbus::Result<()>;
 
     /// id	UINT32	The ID of the notification that was closed.
