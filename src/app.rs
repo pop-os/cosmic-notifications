@@ -61,7 +61,7 @@ struct CosmicNotifications {
 #[derive(Debug, Clone)]
 enum Message {
     ActivateNotification(u32),
-    ActivationToken(Option<String>, u32),
+    ActivationToken(Option<String>, u32, Option<ActionId>),
     Dismissed(u32),
     Notification(notifications::Event),
     Timeout(u32),
@@ -370,15 +370,22 @@ impl CosmicNotifications {
         }
     }
 
-    fn request_activation(&mut self, i: u32) -> Task<Message> {
+    fn request_activation(&mut self, i: u32, action: Option<ActionId>) -> Task<Message> {
         return activation::request_token(
             Some(String::from(Self::APP_ID)),
             Some(WINDOW_ID.clone()),
         )
-        .map(move |token| cosmic::app::Message::App(Message::ActivationToken(token, i)));
+        .map(move |token| {
+            cosmic::app::Message::App(Message::ActivationToken(token, i, action.clone()))
+        });
     }
 
-    fn activate_notification(&mut self, token: String, id: u32) -> Option<Task<Message>> {
+    fn activate_notification(
+        &mut self,
+        token: String,
+        id: u32,
+        action: Option<ActionId>,
+    ) -> Option<Task<Message>> {
         if let Some(tx) = self.notifications_tx.as_ref() {
             let Some((c_pos, _)) = self.cards.iter().enumerate().find(|(_, n)| n.id == id) else {
                 return None;
@@ -386,7 +393,12 @@ impl CosmicNotifications {
 
             let notification = self.cards.get(c_pos).unwrap();
 
-            let maybe_action = if notification
+            let maybe_action = if action
+                .as_ref()
+                .is_some_and(|a| notification.actions.iter().any(|(b, _)| b == a))
+            {
+                action.clone().map(|a| a.to_string())
+            } else if notification
                 .actions
                 .iter()
                 .any(|a| matches!(a.0, ActionId::Default))
@@ -467,13 +479,13 @@ impl cosmic::Application for CosmicNotifications {
             // TODO
             Message::ActivateNotification(id) => {
                 tracing::trace!("requesting token for {id}");
-                return self.request_activation(id);
+                return self.request_activation(id, None);
             }
-            Message::ActivationToken(token, id) => {
+            Message::ActivationToken(token, id, action) => {
                 tracing::trace!("token for {id}");
                 if let Some(token) = token {
                     return self
-                        .activate_notification(token, id)
+                        .activate_notification(token, id, action)
                         .unwrap_or(Task::none());
                 } else {
                     tracing::error!("Failed to get activation token for clicked notification.");
@@ -493,6 +505,10 @@ impl cosmic::Application for CosmicNotifications {
                 }
                 notifications::Event::Ready(tx) => {
                     self.notifications_tx = Some(tx);
+                }
+                notifications::Event::AppletActivated { id, action } => {
+                    tracing::trace!("requesting token for {id}");
+                    return self.request_activation(id, Some(action));
                 }
             },
 

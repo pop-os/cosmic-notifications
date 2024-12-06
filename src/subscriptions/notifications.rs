@@ -6,7 +6,7 @@ use cosmic::{
     },
     iced_futures::Subscription,
 };
-use cosmic_notifications_util::{CloseReason, Notification};
+use cosmic_notifications_util::{ActionId, CloseReason, Notification};
 use once_cell::sync::Lazy;
 use std::{collections::HashMap, fmt::Debug, num::NonZeroU32};
 use tokio::{
@@ -90,6 +90,10 @@ pub enum Input {
         id: u32,
         action: String,
     },
+    AppletActivated {
+        id: u32,
+        action: ActionId,
+    },
     Notification(Notification),
     Replace(Notification),
     CloseNotification(u32),
@@ -104,6 +108,7 @@ pub enum Event {
     Notification(Notification),
     Replace(Notification),
     CloseNotification(u32),
+    AppletActivated { id: u32, action: ActionId },
 }
 
 pub fn notifications() -> Subscription<Event> {
@@ -261,6 +266,13 @@ pub fn notifications() -> Subscription<Event> {
                                     };
                                     let mut iface = iface_ref.get_mut().await;
                                     iface.2.push(c);
+                                }
+                                Input::AppletActivated { id, action } => {
+                                    if let Err(err) =
+                                        output.send(Event::AppletActivated { id, action }).await
+                                    {
+                                        tracing::error!("Failed to send activation action for {id} to subscription channel {err}");
+                                    }
                                 }
                             }
                         } else {
