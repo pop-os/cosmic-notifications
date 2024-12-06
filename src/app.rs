@@ -4,17 +4,18 @@ use cosmic::cosmic_config::{Config, CosmicConfigEntry};
 use cosmic::iced::platform_specific::runtime::wayland::layer_surface::{
     IcedMargin, IcedOutput, SctkLayerSurfaceSettings,
 };
-use cosmic::iced::platform_specific::shell::wayland::commands::layer_surface::{
-    destroy_layer_surface, get_layer_surface, Anchor, KeyboardInteractivity,
+use cosmic::iced::platform_specific::shell::wayland::commands::{
+    activation,
+    layer_surface::{destroy_layer_surface, get_layer_surface, Anchor, KeyboardInteractivity},
 };
 use cosmic::iced::widget::{container, text};
 use cosmic::iced::{self, Length, Limits, Subscription};
 use cosmic::iced_runtime::core::window::Id as SurfaceId;
 use cosmic::iced_widget::{column, row, vertical_space};
 use cosmic::widget::{autosize, button, icon};
-use cosmic::{app::Task, Element};
+use cosmic::{app::Task, Application, Element};
 use cosmic_notifications_config::NotificationsConfig;
-use cosmic_notifications_util::{CloseReason, Notification};
+use cosmic_notifications_util::{ActionId, CloseReason, Notification};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, PanelAnchor};
 use cosmic_time::{anim, id, Instant, Timeline};
 use iced::Alignment;
@@ -60,6 +61,7 @@ struct CosmicNotifications {
 #[derive(Debug, Clone)]
 enum Message {
     ActivateNotification(u32),
+    ActivationToken(Option<String>, u32),
     Dismissed(u32),
     Notification(notifications::Event),
     Timeout(u32),
@@ -367,6 +369,50 @@ impl CosmicNotifications {
             self.push_notification(notification)
         }
     }
+
+    fn request_activation(&mut self, i: u32) -> Task<Message> {
+        return activation::request_token(
+            Some(String::from(Self::APP_ID)),
+            Some(WINDOW_ID.clone()),
+        )
+        .map(move |token| cosmic::app::Message::App(Message::ActivationToken(token, i)));
+    }
+
+    fn activate_notification(&mut self, token: String, id: u32) -> Option<Task<Message>> {
+        if let Some(tx) = self.notifications_tx.as_ref() {
+            let Some((c_pos, _)) = self.cards.iter().enumerate().find(|(_, n)| n.id == id) else {
+                return None;
+            };
+
+            let notification = self.cards.get(c_pos).unwrap();
+
+            let maybe_action = if notification
+                .actions
+                .iter()
+                .any(|a| matches!(a.0, ActionId::Default))
+            {
+                Some(ActionId::Default.to_string())
+            } else {
+                notification.actions.get(0).map(|a| a.0.to_string())
+            };
+
+            let Some(action) = maybe_action else {
+                return self.close(id, CloseReason::Dismissed);
+            };
+            let tx = tx.clone();
+            tracing::trace!("action for {id} {action}");
+            tokio::spawn(async move {
+                _ = tx
+                    .send(notifications::Input::Activated { token, id, action })
+                    .await;
+                tracing::trace!("sent action to sub");
+            });
+            self.close(id, CloseReason::Dismissed)
+        } else {
+            tracing::error!("Failed to activate notification. No channel.");
+            None
+        }
+    }
 }
 
 impl cosmic::Application for CosmicNotifications {
@@ -419,7 +465,20 @@ impl cosmic::Application for CosmicNotifications {
     fn update(&mut self, message: Message) -> Task<Self::Message> {
         match message {
             // TODO
-            Message::ActivateNotification(_) => {}
+            Message::ActivateNotification(id) => {
+                tracing::trace!("requesting token for {id}");
+                return self.request_activation(id);
+            }
+            Message::ActivationToken(token, id) => {
+                tracing::trace!("token for {id}");
+                if let Some(token) = token {
+                    return self
+                        .activate_notification(token, id)
+                        .unwrap_or(Task::none());
+                } else {
+                    tracing::error!("Failed to get activation token for clicked notification.");
+                }
+            }
             Message::Notification(e) => match e {
                 notifications::Event::Notification(n) => {
                     return self.push_notification(n);
@@ -475,7 +534,7 @@ impl cosmic::Application for CosmicNotifications {
                 .into();
         }
 
-        let notif_elems: Vec<_> = self
+        let (ids, notif_elems): (Vec<_>, Vec<_>) = self
             .cards
             .iter()
             .rev()
@@ -549,10 +608,10 @@ impl cosmic::Application for CosmicNotifications {
                     )
                     .width(Length::Fill),
                 );
-                e
+                (n.id, e)
             })
             .take(self.config.max_notifications as usize)
-            .collect();
+            .unzip();
 
         let card_list = anim!(
             //cards
@@ -560,7 +619,8 @@ impl cosmic::Application for CosmicNotifications {
             &self.timeline,
             notif_elems,
             Message::Ignore,
-            move |_, _| Message::Ignore,
+            None::<fn(cosmic_time::chain::Cards, bool) -> Message>,
+            Some(move |id| Message::ActivateNotification(ids[id])),
             "",
             "",
             "",
@@ -570,6 +630,7 @@ impl cosmic::Application for CosmicNotifications {
         .width(Length::Fixed(300.));
 
         autosize::autosize(card_list, AUTOSIZE_ID.clone())
+            .min_width(200.)
             .min_height(100.)
             .max_width(300.)
             .max_height(1920.)

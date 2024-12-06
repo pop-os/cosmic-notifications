@@ -85,6 +85,11 @@ pub enum State {
 
 #[derive(Debug, Clone)]
 pub enum Input {
+    Activated {
+        token: String,
+        id: u32,
+        action: String,
+    },
     Notification(Notification),
     Replace(Notification),
     CloseNotification(u32),
@@ -148,6 +153,38 @@ pub fn notifications() -> Subscription<Event> {
                         };
                         if let Some(next) = conns.rx.recv().await {
                             match next {
+                                Input::Activated { token, id, action } => {
+                                    let object_server = conns.notifications.object_server();
+                                    let Ok(iface_ref) = object_server
+                                        .interface::<_, Notifications>(
+                                            "/org/freedesktop/Notifications",
+                                        )
+                                        .await
+                                    else {
+                                        continue;
+                                    };
+
+                                    if let Err(err) = Notifications::activation_token(
+                                        iface_ref.signal_context(),
+                                        id,
+                                        &token,
+                                    )
+                                    .await
+                                    {
+                                        error!("Failed to signal notification with token {}", err);
+                                    }
+
+                                    if let Err(err) = Notifications::action_invoked(
+                                        iface_ref.signal_context(),
+                                        id,
+                                        &action,
+                                    )
+                                    .await
+                                    {
+                                        error!("Failed to signal activated notification {}", err);
+                                    }
+                                    tracing::trace!("Activated application");
+                                }
                                 Input::Closed(id, reason) => {
                                     let object_server = conns.notifications.object_server();
                                     if let Ok(iface_ref) = object_server
@@ -265,8 +302,8 @@ impl Notifications {
             "body",
             "icon-static",
             "persistence",
-            // TODO support these
             "actions",
+            // TODO support these
             "action-icons",
             "body-markup",
             "body-hyperlinks",
@@ -401,6 +438,13 @@ impl Notifications {
         signal_ctxt: &SignalContext<'_>,
         id: u32,
         action_key: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    async fn activation_token(
+        signal_ctxt: &SignalContext<'_>,
+        id: u32,
+        activation_token: &str,
     ) -> zbus::Result<()>;
 
     /// id	UINT32	The ID of the notification that was closed.
