@@ -476,7 +476,6 @@ impl cosmic::Application for CosmicNotifications {
     #[allow(clippy::too_many_lines)]
     fn update(&mut self, message: Message) -> Task<Self::Message> {
         match message {
-            // TODO
             Message::ActivateNotification(id) => {
                 tracing::trace!("requesting token for {id}");
                 return self.request_activation(id, None);
