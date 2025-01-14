@@ -18,7 +18,7 @@ use tokio::{
 };
 use tracing::error;
 
-use zbus::{interface, Connection, ConnectionBuilder, SignalContext};
+use zbus::{object_server::SignalEmitter, connection::Builder as ConnectionBuilder, interface, Connection};
 
 use super::applet::NotificationsApplet;
 
@@ -199,7 +199,7 @@ pub fn notifications() -> Subscription<Event> {
                                         .await
                                     {
                                         _ = Notifications::notification_closed(
-                                            iface_ref.signal_context(),
+                                            iface_ref.signal_emitter(),
                                             id,
                                             reason as u32,
                                         )
@@ -225,7 +225,7 @@ pub fn notifications() -> Subscription<Event> {
                                         continue;
                                     };
                                     if let Err(err) = Notifications::notification_closed(
-                                        iface_ref.signal_context(),
+                                        iface_ref.signal_emitter(),
                                         id,
                                         3,
                                     )
@@ -245,7 +245,7 @@ pub fn notifications() -> Subscription<Event> {
                                         continue;
                                     };
                                     if let Err(err) = Notifications::notification_closed(
-                                        iface_ref.signal_context(),
+                                        iface_ref.signal_emitter(),
                                         id,
                                         2,
                                     )
@@ -407,7 +407,7 @@ impl Notifications {
                 match tokio::time::timeout(
                     tokio::time::Duration::from_millis(500),
                     NotificationsApplet::notify(
-                        iface_ref.signal_context(),
+                        iface_ref.signal_emitter(),
                         app_name,
                         id,
                         app_icon,
@@ -424,7 +424,6 @@ impl Notifications {
                     Err(err) => error!("Failed to notify applet of notification {}", err),
                     Ok(_) => {}
                 }
-                drop(object_server);
                 new_conns.push(c);
             }
             self.2 = new_conns;
@@ -447,7 +446,7 @@ impl Notifications {
 
     #[zbus(signal)]
     async fn action_invoked(
-        signal_ctxt: &SignalContext<'_>,
+        signal_ctxt: &SignalEmitter<'_>,
         id: u32,
         action_key: &str,
     ) -> zbus::Result<()>;
@@ -473,7 +472,7 @@ impl Notifications {
     /// 4 - Undefined/reserved reasons.
     #[zbus(signal)]
     async fn notification_closed(
-        signal_ctxt: &SignalContext<'_>,
+        signal_ctxt: &SignalEmitter<'_>,
         id: u32,
         reason: u32,
     ) -> zbus::Result<()>;
