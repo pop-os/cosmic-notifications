@@ -51,9 +51,9 @@ bytemuck = "1.13.1"
 log-panics = { version = "2", features = ["with-backtrace"] }
 
 # remove after cosmic-panel is updated to use zbus v4
-# [patch."https://github.com/pop-os/libcosmic"]
-# cosmic-config = { git = "https://github.com/pop-os/libcosmic//" }
-# libcosmic = { git = "https://github.com/pop-os/libcosmic//" }
+[patch."https://github.com/pop-os/libcosmic"]
+libcosmic = { git = "https://github.com/pop-os/libcosmic//", branch = "fix-dbus-subscription-id" }
+cosmic-config = { git = "https://github.com/pop-os/libcosmic//", branch = "fix-dbus-subscription-id" }
 
 [features]
 systemd = ["dep:tracing-journald"]
