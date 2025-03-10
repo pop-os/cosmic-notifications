@@ -1,5 +1,6 @@
 use fast_image_resize as fr;
 use std::num::NonZeroU32;
+use std::str::FromStr;
 use zbus::zvariant::{Signature, Structure};
 pub struct ImageData {
     pub width: u32,
@@ -70,10 +71,10 @@ impl<'a> TryFrom<Structure<'a>> for ImageData {
     type Error = zbus::Error;
 
     fn try_from(value: Structure<'a>) -> zbus::Result<Self> {
-        if Ok(value.full_signature()) != Signature::from_static_str("(iiibiiay)").as_ref() {
+        if Ok(value.signature()) != Signature::from_str("(iiibiiay)").as_ref() {
             return Err(zbus::Error::Failure(format!(
                 "Invalid ImageData: invalid signature {}",
-                value.full_signature().to_string()
+                value.signature().to_string()
             )));
         }
 
