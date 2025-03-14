@@ -66,3 +66,8 @@ members = ["cosmic-notifications-util", "cosmic-notifications-config"]
 smithay-client-toolkit = { version = "0.19.2" }
 # smithay-client-toolkit = { git = "https://github.com/smithay/client-toolkit//", rev = "3bed072" }
 # cosmic-config = { git = "https://github.com/pop-os/libcosmic//" }
+# [patch.'https://github.com/pop-os/libcosmic']
+# libcosmic = { path = "../libcosmic" }
+# cosmic-config = { path = "../libcosmic/cosmic-config" }
+# libcosmic = { git = "https://github.com/pop-os/libcosmic//", branch = "notifications-card" }
+# cosmic-config = { git = "https://github.com/pop-os/libcosmic//", branch = "notifications-card" }

@@ -12,6 +12,7 @@ use cosmic::iced::widget::{container, text};
 use cosmic::iced::{self, Length, Limits, Subscription};
 use cosmic::iced_runtime::core::window::Id as SurfaceId;
 use cosmic::iced_widget::{column, row, vertical_space};
+use cosmic::surface;
 use cosmic::widget::{autosize, button, icon};
 use cosmic::{app::Task, Application, Element};
 use cosmic_notifications_config::NotificationsConfig;
@@ -70,6 +71,7 @@ enum Message {
     DockConfig(CosmicPanelConfig),
     Frame(Instant),
     Ignore,
+    Surface(surface::Action),
 }
 
 impl CosmicNotifications {
@@ -244,7 +246,7 @@ impl CosmicNotifications {
         let mut tasks = vec![if timeout > 0 {
             iced::Task::perform(
                 tokio::time::sleep(Duration::from_millis(timeout as u64)),
-                move |_| cosmic::app::message::app(Message::Timeout(notification.id)),
+                move |_| cosmic::action::app(Message::Timeout(notification.id)),
             )
         } else {
             iced::Task::none()
@@ -375,9 +377,7 @@ impl CosmicNotifications {
             Some(String::from(Self::APP_ID)),
             Some(WINDOW_ID.clone()),
         )
-        .map(move |token| {
-            cosmic::app::Message::App(Message::ActivationToken(token, i, action.clone()))
-        });
+        .map(move |token| cosmic::Action::App(Message::ActivationToken(token, i, action.clone())));
     }
 
     fn activate_notification(
@@ -510,7 +510,6 @@ impl cosmic::Application for CosmicNotifications {
                     return self.request_activation(id, Some(action));
                 }
             },
-
             Message::Dismissed(id) => {
                 if let Some(c) = self.close(id, CloseReason::Dismissed) {
                     return c;
@@ -536,6 +535,11 @@ impl cosmic::Application for CosmicNotifications {
                 self.timeline.now(now);
             }
             Message::Ignore => {}
+            Message::Surface(a) => {
+                return cosmic::task::message(cosmic::Action::Cosmic(cosmic::app::Action::Surface(
+                    a,
+                )))
+            }
         }
         Task::none()
     }
