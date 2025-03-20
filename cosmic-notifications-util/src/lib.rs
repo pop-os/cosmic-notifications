@@ -22,6 +22,7 @@ pub struct Notification {
 }
 
 impl Notification {
+    #[allow(clippy::too_many_arguments)]
     #[cfg(feature = "zbus_notifications")]
     pub fn new(
         app_name: &str,
@@ -54,13 +55,13 @@ impl Notification {
                 "x" => i32::try_from(v).map(Hint::X).ok(),
                 "y" => i32::try_from(v).map(Hint::Y).ok(),
                 "urgency" => u8::try_from(v).map(Hint::Urgency).ok(),
-                "image-path" | "image_path" => String::try_from(v).ok().and_then(|s| {
-                    if let Some(path) = url::Url::parse(&s).ok().and_then(|u| u.to_file_path().ok())
-                    {
-                        Some(Hint::Image(Image::File(path)))
-                    } else {
-                        Some(Hint::Image(Image::Name(s)))
-                    }
+                "image-path" | "image_path" => String::try_from(v).ok().map(|s| {
+                    Hint::Image(
+                        url::Url::parse(&s)
+                            .ok()
+                            .and_then(|u| u.to_file_path().ok())
+                            .map_or(Image::Name(s), Image::File),
+                    )
                 }),
                 "image-data" | "image_data" | "icon_data" => match v {
                     zbus::zvariant::Value::Structure(v) => match ImageData::try_from(v) {
@@ -207,5 +208,5 @@ pub enum CloseReason {
     Undefined = 4,
 }
 
-pub const PANEL_NOTIFICATIONS_FD: &'static str = "PANEL_NOTIFICATIONS_FD";
-pub const DAEMON_NOTIFICATIONS_FD: &'static str = "DAEMON_NOTIFICATIONS_FD";
+pub const PANEL_NOTIFICATIONS_FD: &str = "PANEL_NOTIFICATIONS_FD";
+pub const DAEMON_NOTIFICATIONS_FD: &str = "DAEMON_NOTIFICATIONS_FD";
