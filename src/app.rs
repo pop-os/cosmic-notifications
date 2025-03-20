@@ -6,7 +6,7 @@ use cosmic::iced::platform_specific::runtime::wayland::layer_surface::{
 };
 use cosmic::iced::platform_specific::shell::wayland::commands::{
     activation,
-    layer_surface::{destroy_layer_surface, get_layer_surface, Anchor, KeyboardInteractivity},
+    layer_surface::{Anchor, KeyboardInteractivity, destroy_layer_surface, get_layer_surface},
 };
 use cosmic::iced::widget::{container, text};
 use cosmic::iced::{self, Length, Limits, Subscription};
@@ -14,11 +14,11 @@ use cosmic::iced_runtime::core::window::Id as SurfaceId;
 use cosmic::iced_widget::{column, row, vertical_space};
 use cosmic::surface;
 use cosmic::widget::{autosize, button, icon};
-use cosmic::{app::Task, Application, Element};
+use cosmic::{Application, Element, app::Task};
 use cosmic_notifications_config::NotificationsConfig;
 use cosmic_notifications_util::{ActionId, CloseReason, Notification};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, PanelAnchor};
-use cosmic_time::{anim, id, Instant, Timeline};
+use cosmic_time::{Instant, Timeline, anim, id};
 use iced::Alignment;
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -81,7 +81,7 @@ impl CosmicNotifications {
         let notification = self.cards.remove(c_pos);
         self.sort_notifications();
         self.group_notifications();
-        if let Some(ref sender) = &self.notifications_tx {
+        if let Some(sender) = &self.notifications_tx {
             if !matches!(reason, CloseReason::Expired) {
                 let id = notification.id;
                 let sender = sender.clone();
@@ -91,7 +91,7 @@ impl CosmicNotifications {
             }
         }
 
-        if let Some(ref sender) = &self.notifications_tx {
+        if let Some(sender) = &self.notifications_tx {
             if !matches!(reason, CloseReason::Expired) {
                 let sender = sender.clone();
                 let id = notification.id;
@@ -530,9 +530,9 @@ impl cosmic::Application for CosmicNotifications {
             }
             Message::Ignore => {}
             Message::Surface(a) => {
-                return cosmic::task::message(cosmic::Action::Cosmic(cosmic::app::Action::Surface(
-                    a,
-                )))
+                return cosmic::task::message(cosmic::Action::Cosmic(
+                    cosmic::app::Action::Surface(a),
+                ));
             }
         }
         Task::none()
