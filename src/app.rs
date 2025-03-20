@@ -655,7 +655,11 @@ impl cosmic::Application for CosmicNotifications {
             self.core
                 .watch_config(cosmic_notifications_config::ID)
                 .map(|u| {
-                    for why in u.errors {
+                    for why in u
+                        .errors
+                        .into_iter()
+                        .filter(cosmic::cosmic_config::Error::is_err)
+                    {
                         tracing::error!(?why, "config load error");
                     }
                     Message::Config(u.config)
@@ -663,7 +667,11 @@ impl cosmic::Application for CosmicNotifications {
             self.core
                 .watch_config("com.system76.CosmicPanel.Panel")
                 .map(|u| {
-                    for why in u.errors {
+                    for why in u
+                        .errors
+                        .into_iter()
+                        .filter(cosmic::cosmic_config::Error::is_err)
+                    {
                         tracing::error!(?why, "panel config load error");
                     }
                     Message::PanelConfig(u.config)
@@ -671,7 +679,11 @@ impl cosmic::Application for CosmicNotifications {
             self.core
                 .watch_config("com.system76.CosmicPanel.Dock")
                 .map(|u| {
-                    for why in u.errors {
+                    for why in u
+                        .errors
+                        .into_iter()
+                        .filter(cosmic::cosmic_config::Error::is_err)
+                    {
                         tracing::error!(?why, "dock config load error");
                     }
                     Message::DockConfig(u.config)
