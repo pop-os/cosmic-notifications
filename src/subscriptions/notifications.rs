@@ -7,7 +7,7 @@ use cosmic::{
     iced_futures::Subscription,
 };
 use cosmic_notifications_util::{ActionId, CloseReason, Notification};
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use std::{collections::HashMap, fmt::Debug, num::NonZeroU32};
 use tokio::{
     sync::{
@@ -22,7 +22,7 @@ use zbus::{interface, Connection, ConnectionBuilder, SignalContext};
 
 use super::applet::NotificationsApplet;
 
-pub static CONNS: Lazy<Mutex<Option<Conns>>> = Lazy::new(|| Mutex::new(None));
+pub static CONNS: LazyLock<Mutex<Option<Conns>>> = LazyLock::new(|| Mutex::new(None));
 
 #[derive(Debug)]
 pub struct Conns {
@@ -60,7 +60,7 @@ impl Conns {
                     return Ok(Self {
                         tx,
                         notifications: conn,
-                        rx: rx,
+                        rx,
                         _panel: panel,
                     });
                 }
@@ -348,6 +348,7 @@ impl Notifications {
     ///
     /// The timeout time in milliseconds since the display of the notification at which the notification should automatically close.
     /// If -1, the notification's expiration time is dependent on the notification server's settings, and may vary for the type of notification. If 0, never expire.
+    #[allow(clippy::too_many_arguments)]
     async fn notify(
         &mut self,
         app_name: &str,

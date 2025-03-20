@@ -20,16 +20,16 @@ use cosmic_notifications_util::{ActionId, CloseReason, Notification};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, PanelAnchor};
 use cosmic_time::{anim, id, Instant, Timeline};
 use iced::Alignment;
-use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-static AUTOSIZE_ID: Lazy<iced::id::Id> = Lazy::new(|| iced::id::Id::new("autosize"));
-static WINDOW_ID: Lazy<SurfaceId> = Lazy::new(|| SurfaceId::unique());
+static AUTOSIZE_ID: LazyLock<iced::id::Id> = LazyLock::new(|| iced::id::Id::new("autosize"));
+static WINDOW_ID: LazyLock<SurfaceId> = LazyLock::new(SurfaceId::unique);
 static NOTIFICATIONS_APPLET: &str = "com.system76.CosmicAppletNotifications";
-static NOTIFICATIONS_ID: Lazy<id::Cards> = Lazy::new(|| id::Cards::new("Notifications"));
+static NOTIFICATIONS_ID: LazyLock<id::Cards> = LazyLock::new(|| id::Cards::new("Notifications"));
 
 pub fn run() -> cosmic::iced::Result {
     cosmic::app::run::<CosmicNotifications>(
@@ -76,9 +76,7 @@ enum Message {
 
 impl CosmicNotifications {
     fn close(&mut self, i: u32, reason: CloseReason) -> Option<Task<Message>> {
-        let Some((c_pos, _)) = self.cards.iter().enumerate().find(|(_, n)| n.id == i) else {
-            return None;
-        };
+        let (c_pos, _) = self.cards.iter().enumerate().find(|(_, n)| n.id == i)?;
 
         let notification = self.cards.remove(c_pos);
         self.sort_notifications();
@@ -88,7 +86,7 @@ impl CosmicNotifications {
                 let id = notification.id;
                 let sender = sender.clone();
                 tokio::spawn(async move {
-                    let _ = sender.send(notifications::Input::Closed(id, reason));
+                    _ = sender.send(notifications::Input::Closed(id, reason));
                 });
             }
         }
@@ -103,7 +101,7 @@ impl CosmicNotifications {
 
         if self.cards.is_empty() && self.active_surface {
             self.active_surface = false;
-            Some(destroy_layer_surface(WINDOW_ID.clone()))
+            Some(destroy_layer_surface(*WINDOW_ID))
         } else {
             Some(Task::none())
         }
@@ -256,7 +254,7 @@ impl CosmicNotifications {
             let (anchor, _output) = self.anchor.clone().unwrap_or((Anchor::TOP, None));
             self.active_surface = true;
             tasks.push(get_layer_surface(SctkLayerSurfaceSettings {
-                id: WINDOW_ID.clone(),
+                id: *WINDOW_ID,
                 anchor,
                 exclusive_zone: 0,
                 keyboard_interactivity: KeyboardInteractivity::None,
@@ -373,11 +371,9 @@ impl CosmicNotifications {
     }
 
     fn request_activation(&mut self, i: u32, action: Option<ActionId>) -> Task<Message> {
-        return activation::request_token(
-            Some(String::from(Self::APP_ID)),
-            Some(WINDOW_ID.clone()),
+        activation::request_token(Some(String::from(Self::APP_ID)), Some(*WINDOW_ID)).map(
+            move |token| cosmic::Action::App(Message::ActivationToken(token, i, action.clone())),
         )
-        .map(move |token| cosmic::Action::App(Message::ActivationToken(token, i, action.clone())));
     }
 
     fn activate_notification(
@@ -387,9 +383,7 @@ impl CosmicNotifications {
         action: Option<ActionId>,
     ) -> Option<Task<Message>> {
         if let Some(tx) = self.notifications_tx.as_ref() {
-            let Some((c_pos, _)) = self.cards.iter().enumerate().find(|(_, n)| n.id == id) else {
-                return None;
-            };
+            let (c_pos, _) = self.cards.iter().enumerate().find(|(_, n)| n.id == id)?;
 
             let notification = self.cards.get(c_pos).unwrap();
 
@@ -405,7 +399,7 @@ impl CosmicNotifications {
             {
                 Some(ActionId::Default.to_string())
             } else {
-                notification.actions.get(0).map(|a| a.0.to_string())
+                notification.actions.first().map(|a| a.0.to_string())
             };
 
             let Some(action) = maybe_action else {
@@ -657,38 +651,35 @@ impl cosmic::Application for CosmicNotifications {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        Subscription::batch(
-            vec![
-                self.core
-                    .watch_config(cosmic_notifications_config::ID.into())
-                    .map(|u| {
-                        for why in u.errors {
-                            tracing::error!(?why, "config load error");
-                        }
-                        Message::Config(u.config)
-                    }),
-                self.core
-                    .watch_config("com.system76.CosmicPanel.Panel".into())
-                    .map(|u| {
-                        for why in u.errors {
-                            tracing::error!(?why, "panel config load error");
-                        }
-                        Message::PanelConfig(u.config)
-                    }),
-                self.core
-                    .watch_config("com.system76.CosmicPanel.Dock".into())
-                    .map(|u| {
-                        for why in u.errors {
-                            tracing::error!(?why, "dock config load error");
-                        }
-                        Message::DockConfig(u.config)
-                    }),
-                self.timeline
-                    .as_subscription()
-                    .map(|(_, now)| Message::Frame(now)),
-                notifications::notifications().map(Message::Notification),
-            ]
-            .into_iter(),
-        )
+        Subscription::batch(vec![
+            self.core
+                .watch_config(cosmic_notifications_config::ID)
+                .map(|u| {
+                    for why in u.errors {
+                        tracing::error!(?why, "config load error");
+                    }
+                    Message::Config(u.config)
+                }),
+            self.core
+                .watch_config("com.system76.CosmicPanel.Panel")
+                .map(|u| {
+                    for why in u.errors {
+                        tracing::error!(?why, "panel config load error");
+                    }
+                    Message::PanelConfig(u.config)
+                }),
+            self.core
+                .watch_config("com.system76.CosmicPanel.Dock")
+                .map(|u| {
+                    for why in u.errors {
+                        tracing::error!(?why, "dock config load error");
+                    }
+                    Message::DockConfig(u.config)
+                }),
+            self.timeline
+                .as_subscription()
+                .map(|(_, now)| Message::Frame(now)),
+            notifications::notifications().map(Message::Notification),
+        ])
     }
 }
