@@ -4,11 +4,11 @@ use std::{
 };
 use tokio::{net::UnixStream, sync::mpsc::Sender};
 use tracing::{error, info};
-use zbus::{connection::Builder, interface, zvariant::OwnedFd, Connection, Guid, SignalContext};
+use zbus::{Connection, Guid, SignalContext, connection::Builder, interface, zvariant::OwnedFd};
 
 use super::notifications::Input;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use cosmic_notifications_util::DAEMON_NOTIFICATIONS_FD;
 use std::os::unix::io::FromRawFd;
 

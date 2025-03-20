@@ -2,7 +2,8 @@
 name = "cosmic-notifications"
 version = "0.1.0"
 authors = ["Ashley Wulber <ashley@system76.com>"]
-edition = "2021"
+edition = "2024"
+rust-version = "1.85.0"
 
 [dependencies]
 libcosmic = { git = "https://github.com/pop-os/libcosmic", default-features = false, features = [

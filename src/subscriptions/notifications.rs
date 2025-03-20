@@ -11,14 +11,14 @@ use std::sync::LazyLock;
 use std::{collections::HashMap, fmt::Debug, num::NonZeroU32};
 use tokio::{
     sync::{
-        mpsc::{channel, Receiver, Sender},
         Mutex,
+        mpsc::{Receiver, Sender, channel},
     },
     task::JoinHandle,
 };
 use tracing::error;
 
-use zbus::{interface, Connection, ConnectionBuilder, SignalContext};
+use zbus::{Connection, ConnectionBuilder, SignalContext, interface};
 
 use super::applet::NotificationsApplet;
 
@@ -271,7 +271,9 @@ pub fn notifications() -> Subscription<Event> {
                                     if let Err(err) =
                                         output.send(Event::AppletActivated { id, action }).await
                                     {
-                                        tracing::error!("Failed to send activation action for {id} to subscription channel {err}");
+                                        tracing::error!(
+                                            "Failed to send activation action for {id} to subscription channel {err}"
+                                        );
                                     }
                                 }
                             }

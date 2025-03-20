@@ -5,7 +5,7 @@ mod subscriptions;
 
 use config::APP_ID;
 use tracing::{info, metadata::LevelFilter};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 use localize::localize;
 
