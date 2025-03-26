@@ -21,12 +21,13 @@ i18n-embed = { version = "0.15.3", features = [
     "desktop-requester",
 ] }
 i18n-embed-fl = "0.9.3"
+color-backtrace = "0.7.0"
+cosmic-notifications-util = { path = "./cosmic-notifications-util" }
+cosmic-notifications-config = { path = "./cosmic-notifications-config" }
+cosmic-panel-config = { git = "https://github.com/pop-os/cosmic-panel" }
 cosmic-time = { git = "https://github.com/pop-os/cosmic-time", default-features = false, features = [
     "once_cell",
 ] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3.19", features = ["std", "env-filter"] }
-tracing-journald = { version = "0.3.1", optional = true }
 rust-embed = "8.6.0"
 rustix = "1.0.3"
 serde = { version = "1.0.219", features = ["derive"] }
@@ -39,11 +40,10 @@ tokio = { version = "1.44.1", features = [
     "net",
     "io-util",
 ] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3.19", features = ["std", "env-filter"] }
+tracing-journald = { version = "0.3.1", optional = true }
 zbus = { version = "4.4.0", features = ["tokio", "p2p"] }
-cosmic-notifications-util = { path = "./cosmic-notifications-util" }
-cosmic-notifications-config = { path = "./cosmic-notifications-config" }
-cosmic-panel-config = { git = "https://github.com/pop-os/cosmic-panel" }
-log-panics = { version = "2", features = ["with-backtrace"] }
 
 # remove after cosmic-panel is updated to use zbus v4
 # [patch."https://github.com/pop-os/libcosmic"]

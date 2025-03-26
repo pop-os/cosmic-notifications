@@ -856,6 +856,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "color-backtrace"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2123a5984bd52ca861c66f66a9ab9883b27115c607f801f86c1bc2a84eb69f0f"
+dependencies = [
+ "backtrace",
+ "termcolor",
+]
+
+[[package]]
 name = "color_quant"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1012,6 +1022,7 @@ name = "cosmic-notifications"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "color-backtrace",
  "cosmic-notifications-config",
  "cosmic-notifications-util",
  "cosmic-panel-config",
@@ -1019,7 +1030,6 @@ dependencies = [
  "i18n-embed",
  "i18n-embed-fl",
  "libcosmic",
- "log-panics",
  "ron 0.9.0",
  "rust-embed",
  "rustix 1.0.3",
@@ -2961,16 +2971,6 @@ name = "log"
 version = "0.4.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
-
-[[package]]
-name = "log-panics"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68f9dd8546191c1850ecf67d22f5ff00a935b890d0e84713159a55495cc2ac5f"
-dependencies = [
- "backtrace",
- "log",
-]
 
 [[package]]
 name = "lru"

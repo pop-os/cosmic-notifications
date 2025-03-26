@@ -7,13 +7,10 @@ use cosmic::{
     iced_futures::Subscription,
 };
 use cosmic_notifications_util::{ActionId, CloseReason, Notification};
-use std::sync::LazyLock;
+use futures::channel::mpsc;
 use std::{collections::HashMap, fmt::Debug, num::NonZeroU32};
 use tokio::{
-    sync::{
-        Mutex,
-        mpsc::{Receiver, Sender, channel},
-    },
+    sync::mpsc::{Receiver, Sender, channel},
     task::JoinHandle,
 };
 use tracing::error;
@@ -21,8 +18,6 @@ use tracing::error;
 use zbus::{Connection, ConnectionBuilder, SignalContext, interface};
 
 use super::applet::NotificationsApplet;
-
-pub static CONNS: LazyLock<Mutex<Option<Conns>>> = LazyLock::new(|| Mutex::new(None));
 
 #[derive(Debug)]
 pub struct Conns {
@@ -76,11 +71,167 @@ impl Conns {
     }
 }
 
-#[derive(Debug)]
-pub enum State {
-    Start,
-    Waiting,
-    Finished,
+struct Start;
+struct Waiting;
+
+struct Machine<S> {
+    conns: Option<Conns>,
+    output: mpsc::Sender<Event>,
+    marker: core::marker::PhantomData<S>,
+}
+
+impl<S> Machine<S> {
+    pub fn new(conns: Option<Conns>, output: mpsc::Sender<Event>) -> Self {
+        Self {
+            conns,
+            output,
+            marker: core::marker::PhantomData,
+        }
+    }
+
+    pub fn transition<Next>(self) -> Machine<Next> {
+        Machine::<Next> {
+            conns: self.conns,
+            output: self.output,
+            marker: core::marker::PhantomData,
+        }
+    }
+}
+
+impl Machine<Start> {
+    pub async fn exec(mut self) -> Result<(Machine<Waiting>, Conns), ()> {
+        let handle: JoinHandle<zbus::Result<_>> = tokio::spawn(async move {
+            let conns = Conns::new().await?;
+            Ok(conns)
+        });
+
+        match handle.await {
+            Ok(Ok(conns)) => {
+                _ = self.output.send(Event::Ready(conns.tx.clone())).await;
+                Ok((self.transition::<Waiting>(), conns))
+            }
+            Ok(Err(err)) => {
+                error!("Failed to create connection {}", err);
+                Err(())
+            }
+            Err(err) => {
+                error!("Failed to create connection {}", err);
+                Err(())
+            }
+        }
+    }
+}
+
+impl Machine<Waiting> {
+    pub async fn exec(mut self, mut conns: Conns) {
+        loop {
+            if let Some(next) = conns.rx.recv().await {
+                match next {
+                    Input::Activated { token, id, action } => {
+                        let object_server = conns.notifications.object_server();
+                        let Ok(iface_ref) = object_server
+                            .interface::<_, Notifications>("/org/freedesktop/Notifications")
+                            .await
+                        else {
+                            continue;
+                        };
+
+                        if let Err(err) =
+                            Notifications::activation_token(iface_ref.signal_context(), id, &token)
+                                .await
+                        {
+                            error!("Failed to signal notification with token {}", err);
+                        }
+
+                        if let Err(err) =
+                            Notifications::action_invoked(iface_ref.signal_context(), id, &action)
+                                .await
+                        {
+                            error!("Failed to signal activated notification {}", err);
+                        }
+                        tracing::trace!("Activated application");
+                    }
+                    Input::Closed(id, reason) => {
+                        let object_server = conns.notifications.object_server();
+                        if let Ok(iface_ref) = object_server
+                            .interface::<_, Notifications>("/org/freedesktop/Notifications")
+                            .await
+                        {
+                            _ = Notifications::notification_closed(
+                                iface_ref.signal_context(),
+                                id,
+                                reason as u32,
+                            )
+                            .await;
+                        }
+                    }
+                    Input::Notification(notification) => {
+                        _ = self.output.send(Event::Notification(notification)).await;
+                    }
+                    Input::Replace(notification) => {
+                        _ = self.output.send(Event::Replace(notification)).await;
+                    }
+                    Input::CloseNotification(id) => {
+                        _ = self.output.send(Event::CloseNotification(id)).await;
+
+                        let object_server = conns.notifications.object_server();
+                        let Ok(iface_ref) = object_server
+                            .interface::<_, Notifications>("/org/freedesktop/Notifications")
+                            .await
+                        else {
+                            continue;
+                        };
+                        if let Err(err) =
+                            Notifications::notification_closed(iface_ref.signal_context(), id, 3)
+                                .await
+                        {
+                            error!("Failed to signal close notification {}", err);
+                        }
+                    }
+                    Input::Dismissed(id) => {
+                        let object_server = conns.notifications.object_server();
+                        let Ok(iface_ref) = object_server
+                            .interface::<_, Notifications>("/org/freedesktop/Notifications")
+                            .await
+                        else {
+                            continue;
+                        };
+                        if let Err(err) =
+                            Notifications::notification_closed(iface_ref.signal_context(), id, 2)
+                                .await
+                        {
+                            error!("Failed to signal dismissed notification {}", err);
+                        }
+                    }
+                    Input::AppletConn(c) => {
+                        let object_server = conns.notifications.object_server();
+                        let Ok(iface_ref) = object_server
+                            .interface::<_, Notifications>("/org/freedesktop/Notifications")
+                            .await
+                        else {
+                            continue;
+                        };
+                        let mut iface = iface_ref.get_mut().await;
+                        iface.2.push(c);
+                    }
+                    Input::AppletActivated { id, action } => {
+                        if let Err(err) = self
+                            .output
+                            .send(Event::AppletActivated { id, action })
+                            .await
+                        {
+                            tracing::error!(
+                                "Failed to send activation action for {id} to subscription channel {err}"
+                            );
+                        }
+                    }
+                }
+            } else {
+                // The channel was closed, so we are done
+                return;
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -116,177 +267,14 @@ pub fn notifications() -> Subscription<Event> {
 
     Subscription::run_with_id(
         std::any::TypeId::of::<SomeWorker>(),
-        stream::channel(100, |mut output| async move {
-            let mut state = State::Start;
+        stream::channel(100, |output| async move {
+            let machine = Machine::<Start>::new(None, output);
 
-            loop {
-                match &mut state {
-                    State::Start => {
-                        let mut guard = CONNS.lock().await;
-                        let Some(conns) = guard.as_mut() else {
-                            let handle: JoinHandle<zbus::Result<_>> = tokio::spawn(async move {
-                                let conns = Conns::new().await?;
-                                let tx = conns.tx.clone();
-                                *guard = Some(conns);
-                                Ok(tx)
-                            });
-                            match handle.await {
-                                Ok(Ok(tx)) => {
-                                    _ = output.send(Event::Ready(tx)).await;
-                                    state = State::Waiting;
-                                }
-                                Ok(Err(err)) => {
-                                    error!("Failed to create connection {}", err);
-                                    state = State::Finished;
-                                }
-                                Err(err) => {
-                                    error!("Failed to create connection {}", err);
-                                    state = State::Finished;
-                                }
-                            };
+            if let Ok((waiting, conns)) = machine.exec().await {
+                waiting.exec(conns).await;
+            };
 
-                            continue;
-                        };
-                        _ = output.send(Event::Ready(conns.tx.clone())).await;
-                        state = State::Waiting;
-                    }
-                    State::Waiting => {
-                        let mut guard = CONNS.lock().await;
-                        let Some(conns) = guard.as_mut() else {
-                            state = State::Start;
-                            continue;
-                        };
-                        if let Some(next) = conns.rx.recv().await {
-                            match next {
-                                Input::Activated { token, id, action } => {
-                                    let object_server = conns.notifications.object_server();
-                                    let Ok(iface_ref) = object_server
-                                        .interface::<_, Notifications>(
-                                            "/org/freedesktop/Notifications",
-                                        )
-                                        .await
-                                    else {
-                                        continue;
-                                    };
-
-                                    if let Err(err) = Notifications::activation_token(
-                                        iface_ref.signal_context(),
-                                        id,
-                                        &token,
-                                    )
-                                    .await
-                                    {
-                                        error!("Failed to signal notification with token {}", err);
-                                    }
-
-                                    if let Err(err) = Notifications::action_invoked(
-                                        iface_ref.signal_context(),
-                                        id,
-                                        &action,
-                                    )
-                                    .await
-                                    {
-                                        error!("Failed to signal activated notification {}", err);
-                                    }
-                                    tracing::trace!("Activated application");
-                                }
-                                Input::Closed(id, reason) => {
-                                    let object_server = conns.notifications.object_server();
-                                    if let Ok(iface_ref) = object_server
-                                        .interface::<_, Notifications>(
-                                            "/org/freedesktop/Notifications",
-                                        )
-                                        .await
-                                    {
-                                        _ = Notifications::notification_closed(
-                                            iface_ref.signal_context(),
-                                            id,
-                                            reason as u32,
-                                        )
-                                        .await;
-                                    }
-                                }
-                                Input::Notification(notification) => {
-                                    _ = output.send(Event::Notification(notification)).await;
-                                }
-                                Input::Replace(notification) => {
-                                    _ = output.send(Event::Replace(notification)).await;
-                                }
-                                Input::CloseNotification(id) => {
-                                    _ = output.send(Event::CloseNotification(id)).await;
-
-                                    let object_server = conns.notifications.object_server();
-                                    let Ok(iface_ref) = object_server
-                                        .interface::<_, Notifications>(
-                                            "/org/freedesktop/Notifications",
-                                        )
-                                        .await
-                                    else {
-                                        continue;
-                                    };
-                                    if let Err(err) = Notifications::notification_closed(
-                                        iface_ref.signal_context(),
-                                        id,
-                                        3,
-                                    )
-                                    .await
-                                    {
-                                        error!("Failed to signal close notification {}", err);
-                                    }
-                                }
-                                Input::Dismissed(id) => {
-                                    let object_server = conns.notifications.object_server();
-                                    let Ok(iface_ref) = object_server
-                                        .interface::<_, Notifications>(
-                                            "/org/freedesktop/Notifications",
-                                        )
-                                        .await
-                                    else {
-                                        continue;
-                                    };
-                                    if let Err(err) = Notifications::notification_closed(
-                                        iface_ref.signal_context(),
-                                        id,
-                                        2,
-                                    )
-                                    .await
-                                    {
-                                        error!("Failed to signal dismissed notification {}", err);
-                                    }
-                                }
-                                Input::AppletConn(c) => {
-                                    let object_server = conns.notifications.object_server();
-                                    let Ok(iface_ref) = object_server
-                                        .interface::<_, Notifications>(
-                                            "/org/freedesktop/Notifications",
-                                        )
-                                        .await
-                                    else {
-                                        continue;
-                                    };
-                                    let mut iface = iface_ref.get_mut().await;
-                                    iface.2.push(c);
-                                }
-                                Input::AppletActivated { id, action } => {
-                                    if let Err(err) =
-                                        output.send(Event::AppletActivated { id, action }).await
-                                    {
-                                        tracing::error!(
-                                            "Failed to send activation action for {id} to subscription channel {err}"
-                                        );
-                                    }
-                                }
-                            }
-                        } else {
-                            // The channel was closed, so we are done
-                            state = State::Finished;
-                        }
-                    }
-                    State::Finished => {
-                        let () = futures::future::pending().await;
-                    }
-                }
-            }
+            futures::pending!();
         }),
     )
 }

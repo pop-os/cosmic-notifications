@@ -22,14 +22,10 @@ use cosmic_time::{Instant, Timeline, anim, id};
 use iced::Alignment;
 use std::borrow::Cow;
 use std::path::PathBuf;
-use std::sync::LazyLock;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-static AUTOSIZE_ID: LazyLock<iced::id::Id> = LazyLock::new(|| iced::id::Id::new("autosize"));
-static WINDOW_ID: LazyLock<SurfaceId> = LazyLock::new(SurfaceId::unique);
 static NOTIFICATIONS_APPLET: &str = "com.system76.CosmicAppletNotifications";
-static NOTIFICATIONS_ID: LazyLock<id::Cards> = LazyLock::new(|| id::Cards::new("Notifications"));
 
 pub fn run() -> cosmic::iced::Result {
     cosmic::app::run::<CosmicNotifications>(
@@ -46,11 +42,13 @@ pub fn run() -> cosmic::iced::Result {
     Ok(())
 }
 
-#[derive(Default)]
 struct CosmicNotifications {
     core: Core,
     active_surface: bool,
+    autosize_id: iced::id::Id,
+    window_id: SurfaceId,
     cards: Vec<Notification>,
+    notifications_id: id::Cards,
     notifications_tx: Option<mpsc::Sender<notifications::Input>>,
     config: NotificationsConfig,
     dock_config: CosmicPanelConfig,
@@ -79,6 +77,11 @@ impl CosmicNotifications {
         let (c_pos, _) = self.cards.iter().enumerate().find(|(_, n)| n.id == i)?;
 
         let notification = self.cards.remove(c_pos);
+
+        if self.cards.is_empty() {
+            self.cards.shrink_to(50);
+        }
+
         self.sort_notifications();
         self.group_notifications();
         if let Some(sender) = &self.notifications_tx {
@@ -101,7 +104,7 @@ impl CosmicNotifications {
 
         if self.cards.is_empty() && self.active_surface {
             self.active_surface = false;
-            Some(destroy_layer_surface(*WINDOW_ID))
+            Some(destroy_layer_surface(self.window_id))
         } else {
             Some(Task::none())
         }
@@ -254,7 +257,7 @@ impl CosmicNotifications {
             let (anchor, _output) = self.anchor.clone().unwrap_or((Anchor::TOP, None));
             self.active_surface = true;
             tasks.push(get_layer_surface(SctkLayerSurfaceSettings {
-                id: *WINDOW_ID,
+                id: self.window_id,
                 anchor,
                 exclusive_zone: 0,
                 keyboard_interactivity: KeyboardInteractivity::None,
@@ -371,7 +374,7 @@ impl CosmicNotifications {
     }
 
     fn request_activation(&mut self, i: u32, action: Option<ActionId>) -> Task<Message> {
-        activation::request_token(Some(String::from(Self::APP_ID)), Some(*WINDOW_ID)).map(
+        activation::request_token(Some(String::from(Self::APP_ID)), Some(self.window_id)).map(
             move |token| cosmic::Action::App(Message::ActivationToken(token, i, action.clone())),
         )
     }
@@ -439,7 +442,9 @@ impl cosmic::Application for CosmicNotifications {
             .map(|helper| {
                 NotificationsConfig::get_entry(helper).unwrap_or_else(|(errors, config)| {
                     for err in errors {
-                        tracing::error!("{:?}", err);
+                        if err.is_err() {
+                            tracing::error!("{:?}", err);
+                        }
                     }
                     config
                 })
@@ -448,8 +453,17 @@ impl cosmic::Application for CosmicNotifications {
         (
             CosmicNotifications {
                 core,
+                active_surface: false,
+                autosize_id: iced::id::Id::new("autosize"),
+                window_id: SurfaceId::unique(),
+                anchor: None,
                 config,
-                ..Default::default()
+                dock_config: CosmicPanelConfig::default(),
+                panel_config: CosmicPanelConfig::default(),
+                notifications_id: id::Cards::new("Notifications"),
+                notifications_tx: None,
+                timeline: Timeline::new(),
+                cards: Vec::with_capacity(50),
             },
             Task::none(),
         )
@@ -628,7 +642,7 @@ impl cosmic::Application for CosmicNotifications {
 
         let card_list = anim!(
             //cards
-            NOTIFICATIONS_ID.clone(),
+            self.notifications_id.clone(),
             &self.timeline,
             notif_elems,
             Message::Ignore,
@@ -642,7 +656,7 @@ impl cosmic::Application for CosmicNotifications {
         )
         .width(Length::Fixed(300.));
 
-        autosize::autosize(card_list, AUTOSIZE_ID.clone())
+        autosize::autosize(card_list, self.autosize_id.clone())
             .min_width(200.)
             .min_height(100.)
             .max_width(300.)
