@@ -1,1 +1,1 @@
-app-name = Cosmic Ilmoitukset
+app-name = COSMIC Ilmoitukset
