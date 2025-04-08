@@ -5,11 +5,14 @@
   <metadata_license>CC0</metadata_license>
   <project_license>GPL-3.0-only</project_license>
   <name>COSMIC Notifications</name>
+  <name xml:lang="pl">Powiadomienia COSMIC</name>
   <name xml:lang="pt_BR">Notificações</name>
   <summary>COSMIC Notifications Daemon</summary>
+  <summary xml:lang="pl">Usługa powiadomień COSMIC</summary>
   <summary xml:lang="pt_BR">Daemon de notificações do COSMIC</summary>
   <description>
     <p>The COSMIC Notifications Daemon</p>
+    <p xml:lang="pl">Usługa powiadomień COSMIC</p>
     <p xml:lang="pt_BR">O daemon de notificações do COSMIC</p>
   </description>
   <url type="homepage">https://github.com/pop-os/cosmic-notifications</url>
