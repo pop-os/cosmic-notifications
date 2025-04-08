@@ -1,1 +1,1 @@
-app-name = COSMIC-meldingsbeheer
+app-name = COSMIC Meldingen
