@@ -5,13 +5,14 @@ mod subscriptions;
 
 use config::APP_ID;
 use tracing::{info, metadata::LevelFilter};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 use localize::localize;
 
 use crate::config::VERSION;
 
 fn main() -> anyhow::Result<()> {
+    color_backtrace::install();
     let trace = tracing_subscriber::registry();
 
     let env_filter = EnvFilter::builder()
@@ -31,8 +32,6 @@ fn main() -> anyhow::Result<()> {
 
     #[cfg(not(feature = "systemd"))]
     trace.with(fmt::layer()).with(env_filter).try_init()?;
-
-    log_panics::init();
 
     info!("cosmic-notifications ({})", APP_ID);
     info!("Version: {} ({})", VERSION, config::profile());
