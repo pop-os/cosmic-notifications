@@ -1,15 +1,14 @@
-use nix::fcntl;
 use std::{
     collections::HashMap,
-    os::fd::{IntoRawFd, RawFd},
+    os::fd::{BorrowedFd, IntoRawFd, RawFd},
 };
 use tokio::{net::UnixStream, sync::mpsc::Sender};
 use tracing::{error, info};
-use zbus::{connection::Builder, interface, zvariant::OwnedFd, Connection, Guid, SignalContext};
+use zbus::{Connection, Guid, SignalContext, connection::Builder, interface, zvariant::OwnedFd};
 
 use super::notifications::Input;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use cosmic_notifications_util::DAEMON_NOTIFICATIONS_FD;
 use std::os::unix::io::FromRawFd;
 
@@ -33,28 +32,32 @@ pub async fn setup_panel_conn(tx: Sender<Input>) -> Result<Connection> {
     Ok(conn)
 }
 
+/// Creates a non-blocking [`UnixStream`] for communicating with the panel.
+///
+/// # Safety
+///
+/// It is assumed that `DAEMON_NOTIFICATIONS_FD` was set to a valid raw file descriptor ID.
 pub fn setup_panel_socket() -> Result<UnixStream> {
-    if let Ok(fd_num) = std::env::var(DAEMON_NOTIFICATIONS_FD) {
-        if let Ok(fd) = fd_num.parse::<RawFd>() {
-            info!("Connecting to daemon on fd {}", fd);
-            // set CLOEXEC
-            let flags = fcntl::fcntl(fd, fcntl::FcntlArg::F_GETFD);
-            flags
-                .map(|f: i32| fcntl::FdFlag::from_bits(f).unwrap() | fcntl::FdFlag::FD_CLOEXEC)
-                .and_then(|f| fcntl::fcntl(fd, fcntl::FcntlArg::F_SETFD(f)))?;
-
-            let unix_stream = unsafe { std::os::unix::net::UnixStream::from_raw_fd(fd) };
-            unix_stream.set_nonblocking(true)?;
-
-            let unix_stream: UnixStream = UnixStream::from_std(unix_stream)?;
-
-            Ok(unix_stream)
-        } else {
-            bail!("DAEMON_NOTIFICATIONS_FD is not a valid RawFd.");
-        }
-    } else {
+    let Ok(raw_fd_env_var) = std::env::var(DAEMON_NOTIFICATIONS_FD) else {
         bail!("DAEMON_NOTIFICATIONS_FD is not set.");
-    }
+    };
+
+    let Ok(raw_fd) = raw_fd_env_var.parse::<RawFd>() else {
+        bail!("DAEMON_NOTIFICATIONS_FD is not a valid RawFd.");
+    };
+
+    let fd = unsafe { BorrowedFd::borrow_raw(raw_fd).try_clone_to_owned().unwrap() };
+    info!("Connecting to daemon on fd {}", raw_fd);
+
+    rustix::io::fcntl_setfd(
+        &fd,
+        rustix::io::fcntl_getfd(&fd)? | rustix::io::FdFlags::CLOEXEC,
+    )?;
+
+    let unix_stream = std::os::unix::net::UnixStream::from(fd);
+    unix_stream.set_nonblocking(true)?;
+
+    Ok(UnixStream::from_std(unix_stream)?)
 }
 
 pub struct NotificationsSocket {
@@ -120,6 +123,7 @@ pub struct NotificationsApplet {
     tx: Sender<Input>,
 }
 
+#[allow(clippy::too_many_arguments)]
 #[interface(name = "com.system76.NotificationsApplet")]
 impl NotificationsApplet {
     #[zbus(signal)]

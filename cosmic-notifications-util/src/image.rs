@@ -1,5 +1,4 @@
 use fast_image_resize as fr;
-use std::num::NonZeroU32;
 use zbus::zvariant::{Signature, Structure};
 pub struct ImageData {
     pub width: u32,
@@ -36,30 +35,30 @@ impl ImageData {
         if rgba.width <= 16 && rgba.height <= 16 {
             return rgba;
         }
-        let mut src = fr::Image::from_vec_u8(
-            NonZeroU32::try_from(rgba.width).unwrap(),
-            NonZeroU32::try_from(rgba.height).unwrap(),
-            rgba.data,
-            fr::PixelType::U8x4,
-        )
-        .unwrap();
+        let mut src =
+            fr::images::Image::from_vec_u8(rgba.width, rgba.height, rgba.data, fr::PixelType::U8x4)
+                .unwrap();
+
+        let mut dst =
+            fr::images::Image::new(rgba.width.min(16), rgba.height.min(16), fr::PixelType::U8x4);
+
         // Multiple RGB channels of source image by alpha channel
         // (not required for the Nearest algorithm)
-        let alpha_mul_div = fr::MulDiv::default();
-        alpha_mul_div
-            .multiply_alpha_inplace(&mut src.view_mut())
+        fr::MulDiv::default()
+            .multiply_alpha_inplace(&mut src)
             .unwrap();
-        let dst_width = NonZeroU32::try_from(rgba.width.min(16)).unwrap();
-        let dst_height = NonZeroU32::try_from(rgba.height.min(16)).unwrap();
-        let mut dst = fr::Image::new(dst_width, dst_height, fr::PixelType::U8x4);
-        let mut dst_view = dst.view_mut();
-        let mut resizer = fr::Resizer::new(fr::ResizeAlg::Convolution(fr::FilterType::Lanczos3));
-        resizer.resize(&src.view(), &mut dst_view).unwrap();
-        alpha_mul_div.divide_alpha_inplace(&mut dst_view).unwrap();
+
+        fr::Resizer::new()
+            .resize(&src, &mut dst, Some(&fr::ResizeOptions::default()))
+            .unwrap();
+
+        fr::MulDiv::default()
+            .divide_alpha_inplace(&mut dst)
+            .unwrap();
 
         Self {
-            width: dst.width().get(),
-            height: dst.height().get(),
+            width: dst.width(),
+            height: dst.height(),
             data: dst.into_vec(),
             ..rgba
         }
@@ -73,7 +72,7 @@ impl<'a> TryFrom<Structure<'a>> for ImageData {
         if Ok(value.full_signature()) != Signature::from_static_str("(iiibiiay)").as_ref() {
             return Err(zbus::Error::Failure(format!(
                 "Invalid ImageData: invalid signature {}",
-                value.full_signature().to_string()
+                value.full_signature()
             )));
         }
 
@@ -81,7 +80,7 @@ impl<'a> TryFrom<Structure<'a>> for ImageData {
 
         if fields.len() != 7 {
             return Err(zbus::Error::Failure(
-                "Invalid ImageData: missing fields".to_string(),
+                "Invalid ImageData: missing fields".to_owned(),
             ));
         }
 

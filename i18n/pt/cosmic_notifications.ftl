@@ -1,1 +1,1 @@
-app-name = Notificações Cosmic
+app-name = Notificações COSMIC
