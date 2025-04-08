@@ -1,6 +1,8 @@
 [Desktop Entry]
 Name=COSMIC Notifications
+Name[pt_BR]=Notificações
 Comment=COSMIC Notifications
+Comment[pt_BR]=Notificações do COSMIC
 Type=Application
 Exec=cosmic-notifications
 Terminal=false
