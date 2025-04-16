@@ -1,17 +1,20 @@
 [Desktop Entry]
 Name=COSMIC Notifications
-Name[zh_CN]=COSMIC 通知
-Name[pt]=Notificações
+Name[ar]=إشْعَارَاتُ كوزمِك
 Name[hu]=COSMIC Értesítések
+Name[pt]=Notificações
+Name[zh_CN]=COSMIC 通知
 Comment=COSMIC Notifications
-Comment[zh_CN]=COSMIC 通知
-Comment[pt]=Notificações do COSMIC
+Comment[ar]=إشْعَارَاتُ كوزمِك
 Comment[hu]=COSMIC Értesítések
+Comment[pt]=Notificações do COSMIC
+Comment[zh_CN]=COSMIC 通知
 Type=Application
 Exec=cosmic-notifications
 Terminal=false
 Categories=GNOME;GTK;
 Keywords=Gnome;GTK;
+Keywords[ar]=جنوم;جي‌تي‌كي;
 Icon=com.system76.CosmicNotifications
 StartupNotify=true
 NoDisplay=true
