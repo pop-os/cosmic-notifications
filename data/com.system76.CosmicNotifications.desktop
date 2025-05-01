@@ -1,8 +1,10 @@
 [Desktop Entry]
 Name=COSMIC Notifications
+Name[zh_CN]=COSMIC 通知
 Name[pt]=Notificações
 Name[hu]=COSMIC Értesítések
 Comment=COSMIC Notifications
+Comment[zh_CN]=COSMIC 通知
 Comment[pt]=Notificações do COSMIC
 Comment[hu]=COSMIC Értesítések
 Type=Application
