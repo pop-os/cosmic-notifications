@@ -8,7 +8,6 @@ rust-version = "1.85.0"
 [dependencies]
 libcosmic = { git = "https://github.com/pop-os/libcosmic", default-features = false, features = [
     "autosize",
-    "dbus-config",
     "a11y",
     "winit",
     "multi-window",
