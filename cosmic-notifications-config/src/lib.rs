@@ -1,4 +1,4 @@
-use cosmic_config::{cosmic_config_derive::CosmicConfigEntry, CosmicConfigEntry};
+use cosmic_config::{CosmicConfigEntry, cosmic_config_derive::CosmicConfigEntry};
 
 pub const ID: &str = "com.system76.CosmicNotifications";
 

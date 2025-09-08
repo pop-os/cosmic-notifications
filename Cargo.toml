@@ -3,7 +3,7 @@ name = "cosmic-notifications"
 version = "0.1.0"
 authors = ["Ashley Wulber <ashley@system76.com>"]
 edition = "2024"
-rust-version = "1.85.0"
+rust-version = "1.85"
 
 [dependencies]
 libcosmic = { git = "https://github.com/pop-os/libcosmic", default-features = false, features = [
@@ -16,24 +16,21 @@ libcosmic = { git = "https://github.com/pop-os/libcosmic", default-features = fa
     "tokio",
     "dbus-config",
 ] }
+sctk = { package = "smithay-client-toolkit", version = "0.20.0" }
 anyhow = "1.0"
-i18n-embed = { version = "0.15.3", features = [
+i18n-embed = { version = "0.16", features = [
     "fluent-system",
     "desktop-requester",
 ] }
-i18n-embed-fl = "0.9.3"
-color-backtrace = "0.7.0"
+i18n-embed-fl = "0.10"
+color-backtrace = "0.7.1"
 cosmic-notifications-util = { path = "./cosmic-notifications-util" }
 cosmic-notifications-config = { path = "./cosmic-notifications-config" }
 cosmic-panel-config = { git = "https://github.com/pop-os/cosmic-panel" }
-cosmic-time = { git = "https://github.com/pop-os/cosmic-time", default-features = false, features = [
-    "once_cell",
-] }
-rust-embed = "8.6.0"
-rustix = "1.0.3"
-serde = { version = "1.0.219", features = ["derive"] }
-ron = "0.9.0"
-tokio = { version = "1.44.1", features = [
+cosmic-time = { git = "https://github.com/pop-os/cosmic-time", default-features = false}
+rust-embed = "8.7.2"
+rustix = "1.0.8"
+tokio = { version = "1.47.1", features = [
     "sync",
     "rt",
     "tracing",
@@ -42,9 +39,9 @@ tokio = { version = "1.44.1", features = [
     "io-util",
 ] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3.19", features = ["std", "env-filter"] }
+tracing-subscriber = { version = "0.3.20", features = ["std", "env-filter"] }
 tracing-journald = { version = "0.3.1", optional = true }
-zbus = { version = "5.7.1", features = ["tokio", "p2p"] }
+zbus = { version = "5.10.0", features = ["tokio", "p2p"] }
 
 [features]
 systemd = ["dep:tracing-journald"]
@@ -57,12 +54,7 @@ members = ["cosmic-notifications-util", "cosmic-notifications-config"]
 opt-level = "s"
 lto = "thin"
 
-[patch.'https://github.com/smithay/client-toolkit/']
-smithay-client-toolkit = { version = "0.19.2" }
-# smithay-client-toolkit = { git = "https://github.com/smithay/client-toolkit//", rev = "3bed072" }
 # cosmic-config = { git = "https://github.com/pop-os/libcosmic//" }
 # [patch.'https://github.com/pop-os/libcosmic']
 # libcosmic = { path = "../libcosmic" }
 # cosmic-config = { path = "../libcosmic/cosmic-config" }
-# libcosmic = { git = "https://github.com/pop-os/libcosmic//", branch = "notifications-card" }
-# cosmic-config = { git = "https://github.com/pop-os/libcosmic//", branch = "notifications-card" }
