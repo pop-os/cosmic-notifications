@@ -620,9 +620,21 @@ impl cosmic::Application for CosmicNotifications {
                                 .spacing(8)
                                 .align_y(Alignment::Center)
                             }
-                            None => row![app_name, close_notif]
-                                .spacing(8)
-                                .align_y(Alignment::Center),
+                            None => {
+                                if !n.app_icon.is_empty() {
+                                    row![
+                                        icon::from_name(n.app_icon.as_str()).size(16),
+                                        app_name,
+                                        close_notif
+                                    ]
+                                    .spacing(8)
+                                    .align_y(Alignment::Center)
+                                } else {
+                                    row![app_name, close_notif]
+                                        .spacing(8)
+                                        .align_y(Alignment::Center)
+                                }
+                            }
                         },
                         column![
                             text(n.summary.lines().next().unwrap_or_default())
