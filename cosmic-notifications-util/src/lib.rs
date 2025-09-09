@@ -3,6 +3,7 @@ pub mod image;
 #[cfg(feature = "image")]
 pub use image::*;
 
+use cosmic::widget::{Icon, icon};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap, convert::Infallible, fmt, path::PathBuf, str::FromStr, time::SystemTime,
@@ -136,6 +137,21 @@ impl Notification {
             Hint::Image(i) => Some(i),
             _ => None,
         })
+    }
+
+    pub fn notification_icon(&self) -> Option<Icon> {
+        match self.image() {
+            Some(Image::File(path)) => Some(icon::from_path(PathBuf::from(path)).icon()),
+            Some(Image::Name(name)) => Some(icon::from_name(name.as_str()).icon()),
+            Some(Image::Data {
+                width,
+                height,
+                data,
+            }) => Some(icon::from_raster_pixels(*width, *height, data.clone()).icon()),
+            None => {
+                (!self.app_icon.is_empty()).then(|| icon::from_name(self.app_icon.as_str()).icon())
+            }
+        }
     }
 
     pub fn duration_since(&self) -> Option<std::time::Duration> {

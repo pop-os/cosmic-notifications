@@ -29,7 +29,7 @@ cosmic-notifications-config = { path = "./cosmic-notifications-config" }
 cosmic-panel-config = { git = "https://github.com/pop-os/cosmic-panel" }
 cosmic-time = { git = "https://github.com/pop-os/cosmic-time", default-features = false}
 rust-embed = "8.7.2"
-rustix = "1.0.8"
+rustix = "1.1.1"
 tokio = { version = "1.47.1", features = [
     "sync",
     "rt",
@@ -41,7 +41,7 @@ tokio = { version = "1.47.1", features = [
 tracing = "0.1"
 tracing-subscriber = { version = "0.3.20", features = ["std", "env-filter"] }
 tracing-journald = { version = "0.3.1", optional = true }
-zbus = { version = "5.10.0", features = ["tokio", "p2p"] }
+zbus = { version = "5.11.0", features = ["tokio", "p2p"] }
 
 [features]
 systemd = ["dep:tracing-journald"]
