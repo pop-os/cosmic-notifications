@@ -8,12 +8,11 @@ use cosmic::iced::platform_specific::shell::wayland::commands::{
     activation,
     layer_surface::{Anchor, KeyboardInteractivity, destroy_layer_surface, get_layer_surface},
 };
-use cosmic::iced::widget::{container, text};
 use cosmic::iced::{self, Length, Limits, Subscription};
 use cosmic::iced_runtime::core::window::Id as SurfaceId;
 use cosmic::iced_widget::{column, row, vertical_space};
 use cosmic::surface;
-use cosmic::widget::{autosize, button, icon};
+use cosmic::widget::{autosize, button, container, icon, text};
 use cosmic::{Application, Element, app::Task};
 use cosmic_notifications_config::NotificationsConfig;
 use cosmic_notifications_util::{ActionId, CloseReason, Notification};
@@ -21,7 +20,6 @@ use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, PanelAnchor};
 use cosmic_time::{Instant, Timeline, anim, id};
 use iced::Alignment;
 use std::borrow::Cow;
-use std::path::PathBuf;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -566,7 +564,7 @@ impl cosmic::Application for CosmicNotifications {
             .iter()
             .rev()
             .map(|n| {
-                let app_name = text(if n.app_name.len() > 24 {
+                let app_name = text::caption(if n.app_name.len() > 24 {
                     Cow::from(format!(
                         "{:.26}...",
                         n.app_name.lines().next().unwrap_or_default()
@@ -574,7 +572,6 @@ impl cosmic::Application for CosmicNotifications {
                 } else {
                     Cow::from(&n.app_name)
                 })
-                .size(12)
                 .width(Length::Fill);
 
                 let close_notif = button::custom(
@@ -586,63 +583,20 @@ impl cosmic::Application for CosmicNotifications {
                 .class(cosmic::theme::Button::Text);
                 let e = Element::from(
                     column!(
-                        match n.image() {
-                            Some(cosmic_notifications_util::Image::File(path)) => {
-                                row![
-                                    icon::from_path(PathBuf::from(path)).icon().size(16),
-                                    app_name,
-                                    close_notif
-                                ]
+                        if let Some(icon) = n.notification_icon() {
+                            row![icon.size(16), app_name, close_notif]
                                 .spacing(8)
                                 .align_y(Alignment::Center)
-                            }
-                            Some(cosmic_notifications_util::Image::Name(name)) => {
-                                row![
-                                    icon::from_name(name.as_str()).size(16),
-                                    app_name,
-                                    close_notif
-                                ]
+                        } else {
+                            row![app_name, close_notif]
                                 .spacing(8)
                                 .align_y(Alignment::Center)
-                            }
-                            Some(cosmic_notifications_util::Image::Data {
-                                width,
-                                height,
-                                data,
-                            }) => {
-                                row![
-                                    icon::from_raster_pixels(*width, *height, data.clone())
-                                        .icon()
-                                        .size(16),
-                                    app_name,
-                                    close_notif
-                                ]
-                                .spacing(8)
-                                .align_y(Alignment::Center)
-                            }
-                            None => {
-                                if !n.app_icon.is_empty() {
-                                    row![
-                                        icon::from_name(n.app_icon.as_str()).size(16),
-                                        app_name,
-                                        close_notif
-                                    ]
-                                    .spacing(8)
-                                    .align_y(Alignment::Center)
-                                } else {
-                                    row![app_name, close_notif]
-                                        .spacing(8)
-                                        .align_y(Alignment::Center)
-                                }
-                            }
                         },
                         column![
-                            text(n.summary.lines().next().unwrap_or_default())
+                            text::body(n.summary.lines().next().unwrap_or_default())
+                                .width(Length::Fill),
+                            text::caption(n.body.lines().next().unwrap_or_default())
                                 .width(Length::Fill)
-                                .size(14),
-                            text(n.body.lines().next().unwrap_or_default())
-                                .width(Length::Fill)
-                                .size(12)
                         ]
                     )
                     .width(Length::Fill),
