@@ -1,1 +1,1 @@
-app-name = إشْعَارَاتُ كوزمِك
+app-name = إشعارات COSMIC
