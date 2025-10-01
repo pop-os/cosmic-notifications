@@ -1,0 +1,1 @@
+app-name = COSMICu teavitused
