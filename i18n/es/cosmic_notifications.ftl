@@ -1,0 +1,1 @@
+app-name = Notificaciones COSMIC

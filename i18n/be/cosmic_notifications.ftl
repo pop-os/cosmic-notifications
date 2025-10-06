@@ -1,0 +1,1 @@
+app-name = Апавяшчэнні COSMIC
