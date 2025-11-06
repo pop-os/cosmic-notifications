@@ -24,6 +24,7 @@
     <p xml:lang="pl">Usługa powiadomień COSMIC</p>
     <p xml:lang="pt_BR">O daemon de notificações do COSMIC</p>
     <p xml:lang="pt">O daemon de notificações do COSMIC</p>
+    <p xml:lang="sv">Bakgrundsprocessen för COSMIC Aviseringar</p>
   </description>
   <url type="homepage">https://github.com/pop-os/cosmic-notifications</url>
   <url type="bugtracker">https://github.com/pop-os/cosmic-notifications/issues</url>
