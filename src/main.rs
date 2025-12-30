@@ -1,6 +1,7 @@
 mod app;
 mod config;
 mod localize;
+mod markup;
 mod subscriptions;
 
 use config::APP_ID;
