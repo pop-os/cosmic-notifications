@@ -20,6 +20,7 @@ use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, PanelAnchor};
 use cosmic_time::{Instant, Timeline, anim, id};
 use iced::Alignment;
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -46,6 +47,7 @@ struct CosmicNotifications {
     autosize_id: iced::id::Id,
     window_id: SurfaceId,
     cards: Vec<Notification>,
+    hidden: VecDeque<Notification>,
     notifications_id: id::Cards,
     notifications_tx: Option<mpsc::Sender<notifications::Input>>,
     config: NotificationsConfig,
@@ -71,10 +73,24 @@ enum Message {
 }
 
 impl CosmicNotifications {
-    fn close(&mut self, i: u32, reason: CloseReason) -> Option<Task<Message>> {
-        let (c_pos, _) = self.cards.iter().enumerate().find(|(_, n)| n.id == i)?;
+    fn expire(&mut self, i: u32) {
+        let Some((c_pos, _)) = self.cards.iter().enumerate().find(|(_, n)| n.id == i) else {
+            return;
+        };
 
         let notification = self.cards.remove(c_pos);
+        self.hidden.push_front(notification);
+        self.hidden.truncate(200);
+    }
+
+    fn close(&mut self, i: u32, reason: CloseReason) -> Option<Task<Message>> {
+        let c_pos = self.cards.iter().position(|n| n.id == i);
+        let notification = c_pos.map(|c_pos| self.cards.remove(c_pos)).or_else(|| {
+            self.hidden
+                .iter()
+                .position(|n| n.id == i)
+                .and_then(|pos| self.hidden.remove(pos))
+        })?;
 
         if self.cards.is_empty() {
             self.cards.shrink_to(50);
@@ -83,21 +99,17 @@ impl CosmicNotifications {
         self.sort_notifications();
         self.group_notifications();
         if let Some(sender) = &self.notifications_tx {
-            if !matches!(reason, CloseReason::Expired) {
-                let id = notification.id;
-                let sender = sender.clone();
-                tokio::spawn(async move {
-                    _ = sender.send(notifications::Input::Closed(id, reason));
-                });
-            }
+            let id = notification.id;
+            let sender = sender.clone();
+            tokio::spawn(async move {
+                _ = sender.send(notifications::Input::Closed(id, reason));
+            });
         }
 
         if let Some(sender) = &self.notifications_tx {
-            if !matches!(reason, CloseReason::Expired) {
-                let sender = sender.clone();
-                let id = notification.id;
-                tokio::spawn(async move { sender.send(notifications::Input::Dismissed(id)).await });
-            }
+            let sender = sender.clone();
+            let id = notification.id;
+            tokio::spawn(async move { sender.send(notifications::Input::Dismissed(id)).await });
         }
 
         if self.cards.is_empty() && self.active_surface {
@@ -384,9 +396,13 @@ impl CosmicNotifications {
         action: Option<ActionId>,
     ) -> Option<Task<Message>> {
         if let Some(tx) = self.notifications_tx.as_ref() {
-            let (c_pos, _) = self.cards.iter().enumerate().find(|(_, n)| n.id == id)?;
-
-            let notification = self.cards.get(c_pos).unwrap();
+            let c_pos = self.cards.iter().position(|n| n.id == id);
+            let notification = c_pos.map(|c_pos| self.cards.remove(c_pos)).or_else(|| {
+                self.hidden
+                    .iter()
+                    .position(|n| n.id == id)
+                    .and_then(|pos| self.hidden.remove(pos))
+            })?;
 
             let maybe_action = if action
                 .as_ref()
@@ -408,13 +424,13 @@ impl CosmicNotifications {
             };
             let tx = tx.clone();
             tracing::trace!("action for {id} {action}");
-            tokio::spawn(async move {
+            return Some(Task::future(async move {
                 _ = tx
                     .send(notifications::Input::Activated { token, id, action })
                     .await;
                 tracing::trace!("sent action to sub");
-            });
-            self.close(id, CloseReason::Dismissed)
+                cosmic::Action::App(Message::Dismissed(id))
+            }));
         } else {
             tracing::error!("Failed to activate notification. No channel.");
             None
@@ -462,6 +478,7 @@ impl cosmic::Application for CosmicNotifications {
                 notifications_tx: None,
                 timeline: Timeline::new(),
                 cards: Vec::with_capacity(50),
+                hidden: VecDeque::new(),
             },
             Task::none(),
         )
@@ -522,9 +539,7 @@ impl cosmic::Application for CosmicNotifications {
                 }
             }
             Message::Timeout(id) => {
-                if let Some(c) = self.close(id, CloseReason::Expired) {
-                    return c;
-                }
+                self.expire(id);
             }
             Message::Config(config) => {
                 self.config = config;
