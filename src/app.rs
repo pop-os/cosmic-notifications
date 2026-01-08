@@ -540,6 +540,10 @@ impl cosmic::Application for CosmicNotifications {
             }
             Message::Timeout(id) => {
                 self.expire(id);
+                if self.cards.is_empty() && self.active_surface {
+                    self.active_surface = false;
+                    return destroy_layer_surface(self.window_id);
+                }
             }
             Message::Config(config) => {
                 self.config = config;
