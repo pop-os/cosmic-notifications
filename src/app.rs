@@ -1,3 +1,4 @@
+use crate::markup;
 use crate::subscriptions::notifications;
 use cosmic::app::{Core, Settings};
 use cosmic::cosmic_config::{Config, CosmicConfigEntry};
@@ -10,7 +11,7 @@ use cosmic::iced::platform_specific::shell::wayland::commands::{
 };
 use cosmic::iced::{self, Length, Limits, Subscription};
 use cosmic::iced_runtime::core::window::Id as SurfaceId;
-use cosmic::iced_widget::{column, row, vertical_space};
+use cosmic::iced_widget::{column, rich_text, row, vertical_space};
 use cosmic::surface;
 use cosmic::widget::{autosize, button, container, icon, text};
 use cosmic::{Application, Element, app::Task};
@@ -621,8 +622,11 @@ impl cosmic::Application for CosmicNotifications {
                         column![
                             text::body(n.summary.lines().next().unwrap_or_default())
                                 .width(Length::Fill),
-                            text::caption(n.body.lines().next().unwrap_or_default())
-                                .width(Length::Fill)
+                            Element::from(
+                                rich_text(markup::parse_body(&n.body))
+                                    .size(12.0)
+                                    .width(Length::Fill)
+                            ).map(|_: ()| Message::Ignore)
                         ]
                     )
                     .width(Length::Fill),
