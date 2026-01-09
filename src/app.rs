@@ -79,6 +79,8 @@ impl CosmicNotifications {
         };
 
         let notification = self.cards.remove(c_pos);
+        self.sort_notifications();
+        self.group_notifications();
         self.hidden.push_front(notification);
         self.hidden.truncate(200);
     }
