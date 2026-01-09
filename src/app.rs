@@ -86,6 +86,8 @@ impl CosmicNotifications {
     }
 
     fn close(&mut self, i: u32, reason: CloseReason) -> Option<Task<Message>> {
+        tracing::error!("closed {i}");
+        tracing::error!("{:?}", self.cards);
         let c_pos = self.cards.iter().position(|n| n.id == i);
         let notification = c_pos.map(|c_pos| self.cards.remove(c_pos)).or_else(|| {
             self.hidden
@@ -94,9 +96,12 @@ impl CosmicNotifications {
                 .and_then(|pos| self.hidden.remove(pos))
         })?;
 
+        tracing::error!("closed {c_pos:?}");
+
         if self.cards.is_empty() {
             self.cards.shrink_to(50);
         }
+        tracing::error!("closed {:?}", self.cards.is_empty());
 
         self.sort_notifications();
         self.group_notifications();
@@ -399,11 +404,11 @@ impl CosmicNotifications {
     ) -> Option<Task<Message>> {
         if let Some(tx) = self.notifications_tx.as_ref() {
             let c_pos = self.cards.iter().position(|n| n.id == id);
-            let notification = c_pos.map(|c_pos| self.cards.remove(c_pos)).or_else(|| {
+            let notification = c_pos.map(|c_pos| &self.cards[c_pos]).or_else(|| {
                 self.hidden
                     .iter()
                     .position(|n| n.id == id)
-                    .and_then(|pos| self.hidden.remove(pos))
+                    .map(|pos| &self.hidden[pos])
             })?;
 
             let maybe_action = if action
@@ -425,7 +430,7 @@ impl CosmicNotifications {
                 return self.close(id, CloseReason::Dismissed);
             };
             let tx = tx.clone();
-            tracing::trace!("action for {id} {action}");
+            tracing::error!("action for {id} {action}");
             return Some(Task::future(async move {
                 _ = tx
                     .send(notifications::Input::Activated { token, id, action })
