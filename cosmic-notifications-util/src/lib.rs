@@ -9,6 +9,18 @@ use std::{
     collections::HashMap, convert::Infallible, fmt, path::PathBuf, str::FromStr, time::SystemTime,
 };
 
+/// Strip HTML markup from notification body text per FreeDesktop notification spec.
+/// The spec supports a subset of HTML (body-markup) including <a>, <b>, <i>, <u>, <img>.
+/// Since notifications are not interactive, we strip tags and keep only visible text content.
+fn strip_html(text: &str) -> String {
+    html2text::config::plain()
+        .link_footnotes(false)
+        .string_from_read(text.as_bytes(), text.len())
+        .unwrap_or_else(|_| text.to_string())
+        .trim()
+        .to_string()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Notification {
     pub id: u32,
@@ -96,7 +108,7 @@ impl Notification {
             app_name: app_name.to_string(),
             app_icon: app_icon.to_string(),
             summary: summary.to_string(),
-            body: body.to_string(),
+            body: strip_html(body),
             actions,
             hints,
             expire_timeout,
