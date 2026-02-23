@@ -8,9 +8,9 @@ use cosmic::iced::platform_specific::shell::wayland::commands::{
     activation,
     layer_surface::{Anchor, KeyboardInteractivity, destroy_layer_surface, get_layer_surface},
 };
-use cosmic::iced::{self, Length, Limits, Subscription};
+use cosmic::iced::{self, Length, Limits, Subscription, id};
 use cosmic::iced_runtime::core::window::Id as SurfaceId;
-use cosmic::iced_widget::{column, rich_text, row, vertical_space};
+use cosmic::iced_widget::{column, rich_text, row, space};
 use cosmic::surface;
 use cosmic::widget::{autosize, button, container, icon, text};
 use cosmic::{Application, Element, app::Task};
@@ -18,7 +18,6 @@ use cosmic_notifications_config::NotificationsConfig;
 use cosmic_notifications_util::markup::html_to_spans;
 use cosmic_notifications_util::{ActionId, CloseReason, Notification};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, PanelAnchor};
-use cosmic_time::{Instant, Timeline, anim, id};
 use iced::Alignment;
 use std::borrow::Cow;
 use std::collections::VecDeque;
@@ -49,13 +48,12 @@ struct CosmicNotifications {
     window_id: SurfaceId,
     cards: Vec<Notification>,
     hidden: VecDeque<Notification>,
-    notifications_id: id::Cards,
+    notifications_id: id::Id,
     notifications_tx: Option<mpsc::Sender<notifications::Input>>,
     config: NotificationsConfig,
     dock_config: CosmicPanelConfig,
     panel_config: CosmicPanelConfig,
     anchor: Option<(Anchor, Option<String>)>,
-    timeline: Timeline,
 }
 
 #[derive(Debug, Clone)]
@@ -68,7 +66,6 @@ enum Message {
     Config(NotificationsConfig),
     PanelConfig(CosmicPanelConfig),
     DockConfig(CosmicPanelConfig),
-    Frame(Instant),
     Ignore,
     Surface(surface::Action),
 }
@@ -477,9 +474,8 @@ impl cosmic::Application for CosmicNotifications {
                 config,
                 dock_config: CosmicPanelConfig::default(),
                 panel_config: CosmicPanelConfig::default(),
-                notifications_id: id::Cards::new("Notifications"),
+                notifications_id: id::Id::new("Notifications"),
                 notifications_tx: None,
-                timeline: Timeline::new(),
                 cards: Vec::with_capacity(50),
                 hidden: VecDeque::new(),
             },
@@ -559,9 +555,6 @@ impl cosmic::Application for CosmicNotifications {
                 self.dock_config = c;
                 self.anchor = Some(self.anchor_for_notification_applet());
             }
-            Message::Frame(now) => {
-                self.timeline.now(now);
-            }
             Message::Ignore => {}
             Message::Surface(a) => {
                 return cosmic::task::message(cosmic::Action::Cosmic(
@@ -575,7 +568,7 @@ impl cosmic::Application for CosmicNotifications {
     #[allow(clippy::too_many_lines)]
     fn view_window(&self, _: SurfaceId) -> Element<Message> {
         if self.cards.is_empty() {
-            return container(vertical_space().height(Length::Fixed(1.0)))
+            return container(space::vertical().height(Length::Fixed(1.0)))
                 .center_x(Length::Fixed(1.0))
                 .center_y(Length::Fixed(1.0))
                 .into();
@@ -629,13 +622,11 @@ impl cosmic::Application for CosmicNotifications {
             .take(self.config.max_notifications as usize)
             .unzip();
 
-        let card_list = anim!(
-            //cards
+        let card_list = cosmic::widget::cards(
             self.notifications_id.clone(),
-            &self.timeline,
             notif_elems,
             Message::Ignore,
-            None::<fn(cosmic_time::chain::Cards, bool) -> Message>,
+            None::<fn(bool) -> Message>,
             Some(move |id| Message::ActivateNotification(ids[id])),
             "",
             "",
@@ -691,9 +682,6 @@ impl cosmic::Application for CosmicNotifications {
                     }
                     Message::DockConfig(u.config)
                 }),
-            self.timeline
-                .as_subscription()
-                .map(|(_, now)| Message::Frame(now)),
             notifications::notifications().map(Message::Notification),
         ])
     }
