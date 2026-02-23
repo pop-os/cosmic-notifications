@@ -267,8 +267,7 @@ pub enum Event {
 pub fn notifications() -> Subscription<Event> {
     struct SomeWorker;
 
-    Subscription::run_with_id(
-        std::any::TypeId::of::<SomeWorker>(),
+    Subscription::run_with(std::any::TypeId::of::<SomeWorker>(), |_| {
         stream::channel(100, |output| async move {
             let machine = Machine::<Start>::new(None, output);
 
@@ -277,8 +276,8 @@ pub fn notifications() -> Subscription<Event> {
             };
 
             futures::pending!();
-        }),
-    )
+        })
+    })
 }
 
 pub struct Notifications(Sender<Input>, NonZeroU32, Vec<Connection>);
