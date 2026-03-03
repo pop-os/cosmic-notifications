@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use cosmic_config::{CosmicConfigEntry, cosmic_config_derive::CosmicConfigEntry};
 
 pub const ID: &str = "com.system76.CosmicNotifications";
@@ -19,6 +21,8 @@ pub enum Anchor {
 #[version = 1]
 pub struct NotificationsConfig {
     pub do_not_disturb: bool,
+    /// App IDs allowed to bypass DND.
+    pub do_not_disturb_overrides: HashSet<String>,
     pub anchor: Anchor,
     /// The maximum number of notifications that can be displayed at once.
     pub max_notifications: u32,
@@ -36,6 +40,7 @@ impl Default for NotificationsConfig {
     fn default() -> Self {
         Self {
             do_not_disturb: false,
+            do_not_disturb_overrides: HashSet::default(),
             anchor: Anchor::default(),
             max_notifications: 3,
             max_per_app: 2,
