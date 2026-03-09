@@ -10,11 +10,12 @@ use cosmic::iced::platform_specific::shell::wayland::commands::{
 };
 use cosmic::iced::{self, Length, Limits, Subscription};
 use cosmic::iced_runtime::core::window::Id as SurfaceId;
-use cosmic::iced_widget::{column, row, vertical_space};
+use cosmic::iced_widget::{column, rich_text, row, vertical_space};
 use cosmic::surface;
 use cosmic::widget::{autosize, button, container, icon, text};
 use cosmic::{Application, Element, app::Task};
 use cosmic_notifications_config::NotificationsConfig;
+use cosmic_notifications_util::markup::html_to_spans;
 use cosmic_notifications_util::{ActionId, CloseReason, Notification};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, PanelAnchor};
 use cosmic_time::{Instant, Timeline, anim, id};
@@ -602,6 +603,7 @@ impl cosmic::Application for CosmicNotifications {
                 )
                 .on_press(Message::Dismissed(n.id))
                 .class(cosmic::theme::Button::Text);
+
                 let e = Element::from(
                     column!(
                         if let Some(icon) = n.notification_icon() {
@@ -616,8 +618,8 @@ impl cosmic::Application for CosmicNotifications {
                         column![
                             text::body(n.summary.lines().next().unwrap_or_default())
                                 .width(Length::Fill),
-                            text::caption(n.body.lines().next().unwrap_or_default())
-                                .width(Length::Fill)
+                            Element::from(rich_text(html_to_spans(&n.body)).size(12.0))
+                                .map(|_: ()| Message::Ignore)
                         ]
                     )
                     .width(Length::Fill),

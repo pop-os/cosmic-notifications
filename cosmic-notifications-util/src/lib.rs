@@ -3,7 +3,9 @@ pub mod image;
 #[cfg(feature = "image")]
 pub use image::*;
 
-use cosmic::widget::{Icon, icon};
+pub mod markup;
+
+use cosmic::widget::{icon, Icon};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap, convert::Infallible, fmt, path::PathBuf, str::FromStr, time::SystemTime,
