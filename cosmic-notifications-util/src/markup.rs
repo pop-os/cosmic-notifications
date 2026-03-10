@@ -1,6 +1,7 @@
 use cosmic::{
+    cosmic_theme,
     iced::{
-        Color, Font,
+        Font,
         font::{Style, Weight},
     },
     iced_core::text::Span,
@@ -31,9 +32,8 @@ fn sanitize_html(tags: &[String], content: &str) -> Span<'static> {
             "i" => font.style = Style::Italic,
             "u" => span = span.underline(true),
             "a" => {
-                span = span
-                    .underline(true)
-                    .color(Color::from_rgb(0.0, 0.0, 238.0 / 255.0));
+                let theme = cosmic_theme::Theme::preferred_theme();
+                span = span.underline(true).color(theme.accent_text_color());
             }
             _ => {}
         }
