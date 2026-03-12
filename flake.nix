@@ -5,17 +5,14 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     nix-filter.url = "github:numtide/nix-filter";
-    crane = {
-      url = "github:ipetkov/crane";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    crane.url = "github:ipetkov/crane";
     fenix = {
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, nix-filter, crane, fenix }:
+  outputs = { self, nixpkgs, flake-utils, nix-filter, crane, ... }:
     let
       supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
     in
@@ -50,7 +47,6 @@
             lld
             desktop-file-utils
             stdenv.cc.cc.lib
-            desktop-file-utils
             # Audio support for notification sounds
             alsa-lib
            ];
@@ -68,7 +64,7 @@
           inherit cosmic-ext-notifications-daemon;
         };
 
-        packages.default = cosmic-ext-notifications-daemon.overrideAttrs (oldAttrs: rec {
+        packages.default = cosmic-ext-notifications-daemon.overrideAttrs (_oldAttrs: {
           buildPhase= ''
             just prefix=$out build-release
           '';
