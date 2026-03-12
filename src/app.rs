@@ -70,6 +70,7 @@ enum Message {
     DockConfig(CosmicPanelConfig),
     Frame(Instant),
     Ignore,
+    #[allow(unused)]
     Surface(surface::Action),
 }
 
@@ -427,13 +428,13 @@ impl CosmicNotifications {
             };
             let tx = tx.clone();
             tracing::info!("action for {id} {action}");
-            return Some(Task::future(async move {
+            Some(Task::future(async move {
                 _ = tx
                     .send(notifications::Input::Activated { token, id, action })
                     .await;
                 tracing::trace!("sent action to sub");
                 cosmic::Action::App(Message::Dismissed(id))
-            }));
+            }))
         } else {
             tracing::error!("Failed to activate notification. No channel.");
             None
@@ -495,7 +496,7 @@ impl cosmic::Application for CosmicNotifications {
         &mut self.core
     }
 
-    fn view(&self) -> Element<Self::Message> {
+    fn view(&self) -> Element<'_, Self::Message> {
         unimplemented!();
     }
 
@@ -573,7 +574,7 @@ impl cosmic::Application for CosmicNotifications {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn view_window(&self, _: SurfaceId) -> Element<Message> {
+    fn view_window(&self, _: SurfaceId) -> Element<'_, Message> {
         if self.cards.is_empty() {
             return container(vertical_space().height(Length::Fixed(1.0)))
                 .center_x(Length::Fixed(1.0))
