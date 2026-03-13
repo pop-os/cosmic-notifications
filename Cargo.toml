@@ -3,7 +3,7 @@ name = "cosmic-notifications"
 version = "0.1.0"
 authors = ["Ashley Wulber <ashley@system76.com>"]
 edition = "2024"
-rust-version = "1.92.0"
+rust-version = "1.90.0"
 
 [dependencies]
 libcosmic = { git = "https://github.com/pop-os/libcosmic", default-features = false, features = [
@@ -15,7 +15,7 @@ libcosmic = { git = "https://github.com/pop-os/libcosmic", default-features = fa
     "wayland",
     "tokio",
     "dbus-config",
-], branch = "iced-rebase" }
+] }
 sctk = { package = "smithay-client-toolkit", version = "0.20.0" }
 anyhow = "1.0"
 i18n-embed = { version = "0.16", features = [
@@ -54,6 +54,6 @@ opt-level = "s"
 lto = "thin"
 
 # cosmic-config = { git = "https://github.com/pop-os/libcosmic//" }
-[patch.'https://github.com/pop-os/libcosmic']
-libcosmic = { git = "https://github.com/pop-os/libcosmic//", branch = "iced-rebase" }
-cosmic-config = { git = "https://github.com/pop-os/libcosmic//", branch = "iced-rebase" }
+# [patch.'https://github.com/pop-os/libcosmic']
+# libcosmic = { git = "https://github.com/pop-os/libcosmic//" }
+# cosmic-config = { git = "https://github.com/pop-os/libcosmic//" }
