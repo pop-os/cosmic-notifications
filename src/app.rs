@@ -263,7 +263,13 @@ impl CosmicNotifications {
             iced::Task::none()
         }];
 
-        if self.cards.is_empty() && !self.config.do_not_disturb {
+        if self.cards.is_empty()
+            && (!self.config.do_not_disturb
+                || self
+                    .config
+                    .do_not_disturb_overrides
+                    .contains(&notification.app_name))
+        {
             let (anchor, _output) = self.anchor.clone().unwrap_or((Anchor::TOP, None));
             self.active_surface = true;
             tasks.push(get_layer_surface(SctkLayerSurfaceSettings {
