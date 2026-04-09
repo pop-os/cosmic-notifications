@@ -8,9 +8,9 @@ use cosmic::iced::platform_specific::shell::wayland::commands::{
     activation,
     layer_surface::{Anchor, KeyboardInteractivity, destroy_layer_surface, get_layer_surface},
 };
+use cosmic::iced::widget::{column, rich_text, row, space};
+use cosmic::iced::window::Id as SurfaceId;
 use cosmic::iced::{self, Length, Limits, Subscription, id};
-use cosmic::iced_runtime::core::window::Id as SurfaceId;
-use cosmic::iced_widget::{column, rich_text, row, space};
 use cosmic::surface;
 use cosmic::widget::{autosize, button, container, icon, text};
 use cosmic::{Application, Element, app::Task};

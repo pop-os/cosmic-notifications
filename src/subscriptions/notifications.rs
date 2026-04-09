@@ -1,10 +1,8 @@
 use crate::{config::VERSION, subscriptions::applet};
-use cosmic::{
-    iced::{
-        futures::{self, SinkExt},
-        stream,
-    },
-    iced_futures::Subscription,
+use cosmic::iced::{
+    Subscription,
+    futures::{self, SinkExt},
+    stream,
 };
 use cosmic_notifications_util::{ActionId, CloseReason, Notification};
 use futures::channel::mpsc;

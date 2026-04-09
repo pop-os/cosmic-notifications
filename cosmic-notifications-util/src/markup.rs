@@ -1,10 +1,10 @@
 use cosmic::{
     cosmic_theme,
+    iced::core::text::Span,
     iced::{
         Font,
         font::{Style, Weight},
     },
-    iced_core::text::Span,
 };
 
 // Handle break lines, etc. in the future
