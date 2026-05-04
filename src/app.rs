@@ -67,6 +67,7 @@ enum Message {
     PanelConfig(CosmicPanelConfig),
     DockConfig(CosmicPanelConfig),
     Ignore,
+    #[allow(unused)]
     Surface(surface::Action),
 }
 

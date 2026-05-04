@@ -8,7 +8,8 @@ pub mod markup;
 use cosmic::widget::{Icon, icon};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap, convert::Infallible, fmt, path::PathBuf, str::FromStr, time::SystemTime,
+    collections::HashMap, convert::Infallible, fmt, num::NonZeroU32, path::PathBuf, str::FromStr,
+    time::SystemTime,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -49,6 +50,10 @@ impl Notification {
                 "category" => String::try_from(v).map(Hint::Category).ok(),
                 "desktop-entry" => String::try_from(v).map(Hint::DesktopEntry).ok(),
                 "resident" => bool::try_from(v).map(Hint::Resident).ok(),
+                "sender-pid" => u32::try_from(v)
+                    .ok()
+                    .and_then(NonZeroU32::new)
+                    .map(Hint::SenderPid),
                 "sound-file" => String::try_from(v)
                     .map(|s| Hint::SoundFile(PathBuf::from(s)))
                     .ok(),
@@ -141,6 +146,13 @@ impl Notification {
         })
     }
 
+    pub fn sender_pid(&self) -> Option<NonZeroU32> {
+        self.hints.iter().find_map(|h| match h {
+            Hint::SenderPid(pid) => Some(*pid),
+            _ => None,
+        })
+    }
+
     pub fn notification_icon(&self) -> Option<Icon> {
         match self.image() {
             Some(Image::File(path)) => Some(icon::from_path(PathBuf::from(path)).icon()),
@@ -207,6 +219,7 @@ pub enum Hint {
     Image(Image),
     IconData(Vec<u8>),
     Resident(bool),
+    SenderPid(NonZeroU32),
     SoundFile(PathBuf),
     SoundName(String),
     SuppressSound(bool),
@@ -217,7 +230,6 @@ pub enum Hint {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-
 pub enum Image {
     Name(String),
     File(PathBuf),
