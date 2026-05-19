@@ -18,6 +18,7 @@ use cosmic::iced::widget::{column, rich_text, row, space};
 use cosmic::iced::window::Id as SurfaceId;
 use cosmic::iced::{self, Length, Limits, Subscription, id};
 use cosmic::surface;
+use cosmic::surface::action::LiveSettings;
 use cosmic::widget::{autosize, button, icon, text};
 use cosmic::{Application, Element, app::Task};
 use cosmic_notifications_config::NotificationsConfig;
@@ -448,6 +449,7 @@ impl CosmicNotifications {
             self.popups.push((p_id, auto_id.clone(), None));
             tasks.push(cosmic::surface::surface_task(
                 cosmic::surface::action::app_popup(
+                    |_| LiveSettings::default(),
                     move |_: &mut CosmicNotifications| settings.clone(),
                     Some(Box::new(move |app: &CosmicNotifications| {
                         let Some(autosize_id) = app.popups.get(nth) else {
