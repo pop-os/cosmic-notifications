@@ -243,17 +243,20 @@ impl CosmicNotifications {
         &mut self,
         notification: Notification,
     ) -> Task<<CosmicNotifications as cosmic::app::Application>::Message> {
-        let mut timeout = u32::try_from(notification.expire_timeout).unwrap_or(3000);
-        let max_timeout = if notification.urgency() == 2 {
-            self.config.max_timeout_urgent
-        } else if notification.urgency() == 1 {
-            self.config.max_timeout_normal
+        let timeout = if !self.config.persistence {
+            let timeout = u32::try_from(notification.expire_timeout).unwrap_or(3000);
+            let max_timeout = if notification.urgency() == 2 {
+                self.config.max_timeout_urgent
+            } else if notification.urgency() == 1 {
+                self.config.max_timeout_normal
+            } else {
+                self.config.max_timeout_low
+            }
+            .unwrap_or(u32::try_from(notification.expire_timeout).unwrap_or(3000));
+            timeout.min(max_timeout)
         } else {
-            self.config.max_timeout_low
-        }
-        .unwrap_or(u32::try_from(notification.expire_timeout).unwrap_or(3000));
-        timeout = timeout.min(max_timeout);
-
+            0
+        };
         let mut tasks = vec![if timeout > 0 {
             iced::Task::perform(
                 tokio::time::sleep(Duration::from_millis(timeout as u64)),
