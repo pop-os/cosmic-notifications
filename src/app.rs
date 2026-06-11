@@ -6,7 +6,9 @@ use cosmic::iced::platform_specific::runtime::wayland::layer_surface::{
 };
 use cosmic::iced::platform_specific::shell::wayland::commands::{
     activation,
-    layer_surface::{Anchor, KeyboardInteractivity, destroy_layer_surface, get_layer_surface},
+    layer_surface::{
+        Anchor, KeyboardInteractivity, Layer, destroy_layer_surface, get_layer_surface, set_margin,
+    },
 };
 use cosmic::iced::widget::{column, rich_text, row, space};
 use cosmic::iced::window::Id as SurfaceId;
@@ -14,7 +16,7 @@ use cosmic::iced::{self, Length, Limits, Subscription, id};
 use cosmic::surface;
 use cosmic::widget::{autosize, button, container, icon, text};
 use cosmic::{Application, Element, app::Task};
-use cosmic_notifications_config::NotificationsConfig;
+use cosmic_notifications_config::{FullscreenBehavior, NotificationsConfig};
 use cosmic_notifications_util::markup::html_to_spans;
 use cosmic_notifications_util::{ActionId, CloseReason, Notification};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, PanelAnchor};
@@ -41,14 +43,39 @@ pub fn run() -> cosmic::iced::Result {
     Ok(())
 }
 
+/// State for one of the two notification layer surfaces.
+///
+/// Notifications are split across two surfaces by layer: the `Top`-layer
+/// surface (hidden by fullscreen windows) and the `Overlay`-layer surface
+/// (rendered over fullscreen windows). Which notifications land on which is
+/// decided per-notification by [`CosmicNotifications::card_layer`].
+struct NotifSurface {
+    id: SurfaceId,
+    autosize_id: iced::id::Id,
+    cards_id: id::Id,
+    active: bool,
+}
+
+impl NotifSurface {
+    fn new(name: &str) -> Self {
+        Self {
+            id: SurfaceId::unique(),
+            autosize_id: iced::id::Id::new(format!("autosize-{name}")),
+            cards_id: id::Id::new(format!("Notifications-{name}")),
+            active: false,
+        }
+    }
+}
+
 struct CosmicNotifications {
     core: Core,
-    active_surface: bool,
-    autosize_id: iced::id::Id,
-    window_id: SurfaceId,
+    top: NotifSurface,
+    overlay: NotifSurface,
+    // TODO: When we change the notification positinon based on the notification applet, we should
+    // take this into account
+    overlay_height: i32,
     cards: Vec<Notification>,
     hidden: VecDeque<Notification>,
-    notifications_id: id::Id,
     notifications_tx: Option<mpsc::Sender<notifications::Input>>,
     config: NotificationsConfig,
     dock_config: CosmicPanelConfig,
@@ -66,6 +93,7 @@ enum Message {
     Config(NotificationsConfig),
     PanelConfig(CosmicPanelConfig),
     DockConfig(CosmicPanelConfig),
+    SurfaceResized(SurfaceId, iced::Size),
     Ignore,
     Surface(surface::Action),
 }
@@ -112,12 +140,7 @@ impl CosmicNotifications {
             tokio::spawn(async move { sender.send(notifications::Input::Dismissed(id)).await });
         }
 
-        if self.cards.is_empty() && self.active_surface {
-            self.active_surface = false;
-            Some(destroy_layer_surface(self.window_id))
-        } else {
-            Some(Task::none())
-        }
+        Some(self.sync_surfaces())
     }
 
     fn anchor_for_notification_applet(&self) -> (Anchor, Option<String>) {
@@ -239,6 +262,119 @@ impl CosmicNotifications {
             .unwrap_or((Anchor::TOP, None))
     }
 
+    /// Which layer a given notification belongs on, per the configured
+    /// fullscreen behavior. `Overlay` renders over fullscreen windows; `Top`
+    /// is hidden by them.
+    fn card_layer(&self, notification: &Notification) -> Layer {
+        match self.config.show_over_fullscreen {
+            FullscreenBehavior::None => Layer::Top,
+            FullscreenBehavior::All => Layer::Overlay,
+            // urgency 2 == critical
+            FullscreenBehavior::UrgentOnly if notification.urgency() >= 2 => Layer::Overlay,
+            FullscreenBehavior::UrgentOnly => Layer::Top,
+        }
+    }
+
+    /// The surface that hosts notifications on the given layer.
+    fn surface(&self, layer: Layer) -> &NotifSurface {
+        match layer {
+            Layer::Overlay => &self.overlay,
+            _ => &self.top,
+        }
+    }
+
+    /// Whether any currently-shown notification belongs on the given layer.
+    fn has_cards_on(&self, layer: Layer) -> bool {
+        self.cards.iter().any(|n| self.card_layer(n) == layer)
+    }
+
+    /// Margin for the surface on `layer`. The top surface is pushed away from
+    /// its anchored vertical edge by the overlay surface's height so the two
+    /// notification stacks don't overlap while both are visible.
+    fn margin_for(&self, layer: Layer) -> IcedMargin {
+        //TODO: hardcoded 8px margin
+        let mut margin = IcedMargin {
+            top: 8,
+            right: 8,
+            bottom: 8,
+            left: 8,
+        };
+        if layer == Layer::Top && self.overlay.active {
+            let (anchor, _) = self.anchor.clone().unwrap_or((Anchor::TOP, None));
+            let offset = self.overlay_height + 8;
+            if anchor.contains(Anchor::BOTTOM) && !anchor.contains(Anchor::TOP) {
+                margin.bottom += offset;
+            } else {
+                margin.top += offset;
+            }
+        }
+        margin
+    }
+
+    fn create_surface(&self, layer: Layer) -> Task<Message> {
+        let (anchor, _output) = self.anchor.clone().unwrap_or((Anchor::TOP, None));
+        get_layer_surface(SctkLayerSurfaceSettings {
+            id: self.surface(layer).id,
+            layer,
+            anchor,
+            exclusive_zone: 0,
+            keyboard_interactivity: KeyboardInteractivity::None,
+            namespace: "notifications".to_string(),
+            margin: self.margin_for(layer),
+            size: Some((Some(300), Some(1))),
+            output: IcedOutput::Active, // TODO should we only create the notification on the output the applet is on?
+            size_limits: Limits::NONE
+                .min_width(300.0)
+                .min_height(1.0)
+                .max_height(1920.0)
+                .max_width(300.0),
+            ..Default::default()
+        })
+    }
+
+    /// Re-position the top surface to sit below the overlay surface (no-op if
+    /// the top surface isn't currently shown).
+    fn sync_top_margin(&self) -> Task<Message> {
+        if !self.top.active {
+            return Task::none();
+        }
+        let m = self.margin_for(Layer::Top);
+        set_margin(self.top.id, m.top, m.right, m.bottom, m.left)
+    }
+
+    /// Create/destroy the two layer surfaces so that each exists exactly when it
+    /// has notifications to show. Called after any change to `cards` or config.
+    fn sync_surfaces(&mut self) -> Task<Message> {
+        let dnd = self.config.do_not_disturb;
+        let want_overlay = !dnd && self.has_cards_on(Layer::Overlay);
+        let want_top = !dnd && self.has_cards_on(Layer::Top);
+
+        let mut tasks = Vec::new();
+
+        // Overlay surface first, so its margin/height is known when the top
+        // surface positions itself beneath it.
+        if want_overlay && !self.overlay.active {
+            self.overlay.active = true;
+            tasks.push(self.create_surface(Layer::Overlay));
+        } else if !want_overlay && self.overlay.active {
+            self.overlay.active = false;
+            self.overlay_height = 0;
+            tasks.push(destroy_layer_surface(self.overlay.id));
+            // Overlay gone: let the top surface move back up.
+            tasks.push(self.sync_top_margin());
+        }
+
+        if want_top && !self.top.active {
+            self.top.active = true;
+            tasks.push(self.create_surface(Layer::Top));
+        } else if !want_top && self.top.active {
+            self.top.active = false;
+            tasks.push(destroy_layer_surface(self.top.id));
+        }
+
+        Task::batch(tasks)
+    }
+
     fn push_notification(
         &mut self,
         notification: Notification,
@@ -263,32 +399,6 @@ impl CosmicNotifications {
             iced::Task::none()
         }];
 
-        if self.cards.is_empty() && !self.config.do_not_disturb {
-            let (anchor, _output) = self.anchor.clone().unwrap_or((Anchor::TOP, None));
-            self.active_surface = true;
-            tasks.push(get_layer_surface(SctkLayerSurfaceSettings {
-                id: self.window_id,
-                anchor,
-                exclusive_zone: 0,
-                keyboard_interactivity: KeyboardInteractivity::None,
-                namespace: "notifications".to_string(),
-                margin: IcedMargin {
-                    top: 8,
-                    right: 8,
-                    bottom: 8,
-                    left: 8,
-                },
-                size: Some((Some(300), Some(1))),
-                output: IcedOutput::Active, // TODO should we only create the notification on the output the applet is on?
-                size_limits: Limits::NONE
-                    .min_width(300.0)
-                    .min_height(1.0)
-                    .max_height(1920.0)
-                    .max_width(300.0),
-                ..Default::default()
-            }));
-        };
-
         self.sort_notifications();
 
         let mut insert_sorted =
@@ -307,6 +417,11 @@ impl CosmicNotifications {
             };
         insert_sorted(notification);
         self.group_notifications();
+
+        // Create/destroy surfaces to match the notifications now on screen. A
+        // newly-arrived urgent notification (under `UrgentOnly`) brings up the
+        // overlay surface here, for example.
+        tasks.push(self.sync_surfaces());
 
         iced::Task::batch(tasks)
     }
@@ -376,7 +491,7 @@ impl CosmicNotifications {
     fn replace_notification(&mut self, notification: Notification) -> Task<Message> {
         if let Some(notif) = self.cards.iter_mut().find(|n| n.id == notification.id) {
             *notif = notification;
-            Task::none()
+            self.sync_surfaces()
         } else {
             tracing::error!("Notification not found... pushing instead");
             self.push_notification(notification)
@@ -384,7 +499,14 @@ impl CosmicNotifications {
     }
 
     fn request_activation(&mut self, i: u32, action: Option<ActionId>) -> Task<Message> {
-        activation::request_token(Some(String::from(Self::APP_ID)), Some(self.window_id)).map(
+        // Associate the token with whichever surface the notification lives on.
+        let surface_id = self
+            .cards
+            .iter()
+            .find(|n| n.id == i)
+            .map(|n| self.surface(self.card_layer(n)).id)
+            .unwrap_or(self.top.id);
+        activation::request_token(Some(String::from(Self::APP_ID)), Some(surface_id)).map(
             move |token| cosmic::Action::App(Message::ActivationToken(token, i, action.clone())),
         )
     }
@@ -467,14 +589,13 @@ impl cosmic::Application for CosmicNotifications {
         (
             CosmicNotifications {
                 core,
-                active_surface: false,
-                autosize_id: iced::id::Id::new("autosize"),
-                window_id: SurfaceId::unique(),
+                top: NotifSurface::new("top"),
+                overlay: NotifSurface::new("overlay"),
+                overlay_height: 0,
                 anchor: None,
                 config,
                 dock_config: CosmicPanelConfig::default(),
                 panel_config: CosmicPanelConfig::default(),
-                notifications_id: id::Id::new("Notifications"),
                 notifications_tx: None,
                 cards: Vec::with_capacity(50),
                 hidden: VecDeque::new(),
@@ -539,13 +660,15 @@ impl cosmic::Application for CosmicNotifications {
             }
             Message::Timeout(id) => {
                 self.expire(id);
-                if self.cards.is_empty() && self.active_surface {
-                    self.active_surface = false;
-                    return destroy_layer_surface(self.window_id);
-                }
+                // An expiring notification may empty a surface or, when it was
+                // the last urgent one, move the rest back to the top surface.
+                return self.sync_surfaces();
             }
             Message::Config(config) => {
                 self.config = config;
+                // The fullscreen behavior may have changed, re-partitioning
+                // notifications across the two surfaces.
+                return self.sync_surfaces();
             }
             Message::PanelConfig(c) => {
                 self.panel_config = c;
@@ -554,6 +677,17 @@ impl cosmic::Application for CosmicNotifications {
             Message::DockConfig(c) => {
                 self.dock_config = c;
                 self.anchor = Some(self.anchor_for_notification_applet());
+            }
+            Message::SurfaceResized(id, size) => {
+                // Track the overlay surface's height so the top surface can be
+                // positioned just below it (avoiding overlapping stacks).
+                if id == self.overlay.id {
+                    let height = size.height.ceil() as i32;
+                    if height != self.overlay_height {
+                        self.overlay_height = height;
+                        return self.sync_top_margin();
+                    }
+                }
             }
             Message::Ignore => {}
             Message::Surface(a) => {
@@ -566,8 +700,16 @@ impl cosmic::Application for CosmicNotifications {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn view_window(&self, _: SurfaceId) -> Element<'_, Message> {
-        if self.cards.is_empty() {
+    fn view_window(&self, id: SurfaceId) -> Element<'_, Message> {
+        // Each surface renders only the notifications that belong on its layer.
+        let layer = if id == self.overlay.id {
+            Layer::Overlay
+        } else {
+            Layer::Top
+        };
+        let surface = self.surface(layer);
+
+        if !self.has_cards_on(layer) {
             return container(space::vertical().height(Length::Fixed(1.0)))
                 .center_x(Length::Fixed(1.0))
                 .center_y(Length::Fixed(1.0))
@@ -577,6 +719,7 @@ impl cosmic::Application for CosmicNotifications {
         let (ids, notif_elems): (Vec<_>, Vec<_>) = self
             .cards
             .iter()
+            .filter(|n| self.card_layer(n) == layer)
             .rev()
             .map(|n| {
                 let app_name = text::caption(if n.app_name.len() > 24 {
@@ -623,7 +766,7 @@ impl cosmic::Application for CosmicNotifications {
             .unzip();
 
         let card_list = cosmic::widget::cards(
-            self.notifications_id.clone(),
+            surface.cards_id.clone(),
             notif_elems,
             Message::Ignore,
             None::<fn(bool) -> Message>,
@@ -636,7 +779,7 @@ impl cosmic::Application for CosmicNotifications {
         )
         .width(Length::Fixed(300.));
 
-        autosize::autosize(card_list, self.autosize_id.clone())
+        autosize::autosize(card_list, surface.autosize_id.clone())
             .min_width(200.)
             .min_height(100.)
             .max_width(300.)
@@ -683,6 +826,8 @@ impl cosmic::Application for CosmicNotifications {
                     Message::DockConfig(u.config)
                 }),
             notifications::notifications().map(Message::Notification),
+            cosmic::iced::window::resize_events()
+                .map(|(id, size)| Message::SurfaceResized(id, size)),
         ])
     }
 }
