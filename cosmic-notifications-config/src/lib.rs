@@ -18,6 +18,20 @@ pub enum Anchor {
     BottomRight,
 }
 
+/// Controls whether notifications are shown on top of fullscreen windows.
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
+pub enum FullscreenBehavior {
+    /// Never show notifications over fullscreen windows (default).
+    #[default]
+    None,
+    /// Only show urgent (critical) notifications over fullscreen windows.
+    UrgentOnly,
+    /// Show all notifications over fullscreen windows.
+    All,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, CosmicConfigEntry)]
 #[version = 1]
 pub struct NotificationsConfig {
@@ -33,6 +47,8 @@ pub struct NotificationsConfig {
     pub max_timeout_normal: Option<u32>,
     /// Max time in milliseconds a low priority notification can be displayed before being removed.
     pub max_timeout_low: Option<u32>,
+    /// Whether (and which) notifications are shown over fullscreen windows.
+    pub show_over_fullscreen: FullscreenBehavior,
 }
 
 impl Default for NotificationsConfig {
@@ -45,6 +61,7 @@ impl Default for NotificationsConfig {
             max_timeout_urgent: None,
             max_timeout_normal: Some(5000),
             max_timeout_low: Some(3000),
+            show_over_fullscreen: FullscreenBehavior::default(),
         }
     }
 }
