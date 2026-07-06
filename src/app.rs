@@ -1,23 +1,31 @@
 use crate::subscriptions::notifications;
 use cosmic::app::{Core, Settings};
+use cosmic::core::Auto;
 use cosmic::cosmic_config::{Config, CosmicConfigEntry};
+use cosmic::iced::event::listen_raw;
 use cosmic::iced::platform_specific::runtime::wayland::layer_surface::{
     IcedMargin, IcedOutput, SctkLayerSurfaceSettings,
 };
+use cosmic::iced::platform_specific::shell::commands::popup::destroy_popup;
 use cosmic::iced::platform_specific::shell::wayland::commands::{
     activation,
+    corner_radius::corner_radius,
     layer_surface::{Anchor, KeyboardInteractivity, destroy_layer_surface, get_layer_surface},
 };
+use cosmic::iced::runtime::platform_specific::wayland::CornerRadius;
+use cosmic::iced::runtime::platform_specific::wayland::popup::{SctkPopupSettings, SctkPositioner};
 use cosmic::iced::widget::{column, rich_text, row, space};
 use cosmic::iced::window::Id as SurfaceId;
 use cosmic::iced::{self, Length, Limits, Subscription, id};
 use cosmic::surface;
-use cosmic::widget::{autosize, button, container, icon, text};
+use cosmic::surface::action::LiveSettings;
+use cosmic::widget::{autosize, button, icon, text};
 use cosmic::{Application, Element, app::Task};
 use cosmic_notifications_config::NotificationsConfig;
 use cosmic_notifications_util::markup::html_to_spans;
 use cosmic_notifications_util::{ActionId, CloseReason, Notification};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, PanelAnchor};
+use enumflags2::BitFlags;
 use iced::Alignment;
 use std::borrow::Cow;
 use std::collections::VecDeque;
@@ -44,7 +52,6 @@ pub fn run() -> cosmic::iced::Result {
 struct CosmicNotifications {
     core: Core,
     active_surface: bool,
-    autosize_id: iced::id::Id,
     window_id: SurfaceId,
     cards: Vec<Notification>,
     hidden: VecDeque<Notification>,
@@ -54,6 +61,7 @@ struct CosmicNotifications {
     dock_config: CosmicPanelConfig,
     panel_config: CosmicPanelConfig,
     anchor: Option<(Anchor, Option<String>)>,
+    popups: Vec<(SurfaceId, iced::id::Id, Option<iced::Size>)>,
 }
 
 #[derive(Debug, Clone)]
@@ -68,12 +76,13 @@ enum Message {
     DockConfig(CosmicPanelConfig),
     Ignore,
     Surface(surface::Action),
+    PopupSize(SurfaceId, iced::Size),
 }
 
 impl CosmicNotifications {
-    fn expire(&mut self, i: u32) {
+    fn expire(&mut self, i: u32) -> Task<Message> {
         let Some((c_pos, _)) = self.cards.iter().enumerate().find(|(_, n)| n.id == i) else {
-            return;
+            return Task::none();
         };
 
         let notification = self.cards.remove(c_pos);
@@ -81,6 +90,15 @@ impl CosmicNotifications {
         self.group_notifications();
         self.hidden.push_front(notification);
         self.hidden.truncate(200);
+        let mut tasks = Vec::with_capacity(1);
+        if self.popups.len() > self.cards.len() {
+            let to_remove = self.popups.len() - self.cards.len();
+            for _ in 0..to_remove {
+                let (id, _, _) = self.popups.remove(self.popups.len() - 1);
+                tasks.push(destroy_popup::<Message>(id).discard());
+            }
+        }
+        return Task::batch(tasks);
     }
 
     fn close(&mut self, i: u32, reason: CloseReason) -> Option<Task<Message>> {
@@ -114,7 +132,16 @@ impl CosmicNotifications {
 
         if self.cards.is_empty() && self.active_surface {
             self.active_surface = false;
+            self.popups.clear();
             Some(destroy_layer_surface(self.window_id))
+        } else if self.popups.len() > self.cards.len() {
+            let to_remove = self.popups.len() - self.cards.len();
+            let mut tasks = Vec::with_capacity(1);
+            for _ in 0..to_remove {
+                let (id, _, _) = self.popups.remove(self.popups.len() - 1);
+                tasks.push(destroy_popup::<Message>(id).discard());
+            }
+            Some(Task::batch(tasks))
         } else {
             Some(Task::none())
         }
@@ -291,22 +318,240 @@ impl CosmicNotifications {
 
         self.sort_notifications();
 
-        let mut insert_sorted =
-            |notification: Notification| match self.cards.binary_search_by(|a| {
-                match a.urgency().cmp(&notification.urgency()) {
-                    std::cmp::Ordering::Equal => a.time.cmp(&notification.time),
-                    other => other,
-                }
+        match self
+            .cards
+            .binary_search_by(|a| match a.urgency().cmp(&notification.urgency()) {
+                std::cmp::Ordering::Equal => a.time.cmp(&notification.time),
+                other => other,
             }) {
-                Ok(pos) => {
-                    self.cards[pos] = notification;
-                }
-                Err(pos) => {
-                    self.cards.insert(pos, notification);
-                }
-            };
-        insert_sorted(notification);
+            Ok(pos) => {
+                self.cards[pos] = notification;
+            }
+            Err(pos) => {
+                self.cards.insert(pos, notification);
+            }
+        };
         self.group_notifications();
+        if self.popups.len() < self.config.max_notifications as usize
+            && self.cards.len() > self.popups.len()
+        {
+            let (parent, positioner) = if self.popups.is_empty() {
+                (
+                    self.window_id,
+                    SctkPositioner {
+                        size: None,
+                        size_limits: Limits::NONE
+                            .min_width(300.0)
+                            .min_height(1.0)
+                            .max_height(1920.0)
+                            .max_width(300.0),
+                        anchor_rect: iced::Rectangle {
+                            x: 0,
+                            y: 6,
+                            width: 300,
+                            height: 1,
+                        },
+                        anchor: if self
+                            .anchor
+                            .as_ref()
+                            .is_some_and(|a| a.0.contains(Anchor::BOTTOM))
+                        {
+                            cosmic::cctk::sctk::reexports::protocols::xdg::shell::client::xdg_positioner::Anchor::Top
+                        } else {
+                            cosmic::cctk::sctk::reexports::protocols::xdg::shell::client::xdg_positioner::Anchor::Bottom
+                        },
+                        gravity: if self
+                            .anchor
+                            .as_ref()
+                            .is_some_and(|a| a.0.contains(Anchor::BOTTOM))
+                        {
+                            cosmic::cctk::sctk::reexports::protocols::xdg::shell::client::xdg_positioner::Gravity::Top
+                        } else {
+                            cosmic::cctk::sctk::reexports::protocols::xdg::shell::client::xdg_positioner::Gravity::Bottom
+                        },
+                        constraint_adjustment: 0, // TODO do we want to allow sliding if there is no other way?
+                        offset: if self
+                            .anchor
+                            .as_ref()
+                            .is_some_and(|a| a.0.contains(Anchor::BOTTOM))
+                        {
+                            (0, -8)
+                        } else {
+                            (0, 8)
+                        },
+                        reactive: true,
+                    },
+                )
+            } else {
+                let (p_id, _, p_size) = self.popups.last().unwrap();
+                (
+                    *p_id,
+                    SctkPositioner {
+                        size: None,
+                        size_limits: Limits::NONE
+                            .min_width(300.0)
+                            .min_height(1.0)
+                            .max_height(1920.0)
+                            .max_width(300.0),
+                        anchor_rect: p_size
+                            .map(|s| iced::Rectangle {
+                                x: 0,
+                                y: 0,
+                                width: s.width as i32,
+                                height: s.height as i32,
+                            })
+                            .unwrap_or_default(),
+                        anchor: if self
+                            .anchor
+                            .as_ref()
+                            .is_some_and(|a| a.0.contains(Anchor::BOTTOM))
+                        {
+                            cosmic::cctk::sctk::reexports::protocols::xdg::shell::client::xdg_positioner::Anchor::Top
+                        } else {
+                            cosmic::cctk::sctk::reexports::protocols::xdg::shell::client::xdg_positioner::Anchor::Bottom
+                        },
+                        gravity: if self
+                            .anchor
+                            .as_ref()
+                            .is_some_and(|a| a.0.contains(Anchor::BOTTOM))
+                        {
+                            cosmic::cctk::sctk::reexports::protocols::xdg::shell::client::xdg_positioner::Gravity::Top
+                        } else {
+                            cosmic::cctk::sctk::reexports::protocols::xdg::shell::client::xdg_positioner::Gravity::Bottom
+                        },
+                        constraint_adjustment: 0, // TODO do we want to allow sliding if there is no other way?
+                        offset: if self
+                            .anchor
+                            .as_ref()
+                            .is_some_and(|a| a.0.contains(Anchor::BOTTOM))
+                        {
+                            (0, -8)
+                        } else {
+                            (0, 8)
+                        },
+                        reactive: true,
+                    },
+                )
+            };
+            let p_id = SurfaceId::unique();
+            let settings = SctkPopupSettings {
+                parent,
+                id: p_id,
+                positioner,
+                parent_size: None,
+                grab: false,
+                close_with_children: false,
+                input_zone: None,
+            };
+
+            let auto_id = iced::id::Id::unique();
+            let nth = self.popups.len();
+            self.popups.push((p_id, auto_id.clone(), None));
+            tasks.push(cosmic::surface::surface_task(
+                cosmic::surface::action::app_popup(
+                    |_| LiveSettings::default(),
+                    move |_: &mut CosmicNotifications| settings.clone(),
+                    Some(Box::new(move |app: &CosmicNotifications| {
+                        let Some(autosize_id) = app.popups.get(nth) else {
+                            return space::horizontal().height(300).into();
+                        };
+                        if app.cards.len() <= nth {
+                            return space::horizontal().height(300).into();
+                        }
+
+                        let (ids, notif_elems) = app
+                            .cards
+                            .iter()
+                            .rev()
+                            .map(|n| {
+                                let app_name = text::caption(if n.app_name.len() > 24 {
+                                    Cow::from(format!(
+                                        "{:.26}...",
+                                        n.app_name.lines().next().unwrap_or_default()
+                                    ))
+                                } else {
+                                    Cow::from(&n.app_name)
+                                })
+                                .width(Length::Fill);
+
+                                let close_notif = button::custom(
+                                    icon::from_name("window-close-symbolic")
+                                        .size(16)
+                                        .symbolic(true),
+                                )
+                                .on_press(Message::Dismissed(n.id))
+                                .class(cosmic::theme::Button::Text);
+
+                                let e = Element::from(
+                                    column!(
+                                        if let Some(icon) = n.notification_icon() {
+                                            row![icon.size(16), app_name, close_notif]
+                                                .spacing(8)
+                                                .align_y(Alignment::Center)
+                                        } else {
+                                            row![app_name, close_notif]
+                                                .spacing(8)
+                                                .align_y(Alignment::Center)
+                                        },
+                                        column![
+                                            text::body(
+                                                n.summary.lines().next().unwrap_or_default()
+                                            )
+                                            .width(Length::Fill),
+                                            Element::from(
+                                                rich_text(html_to_spans(&n.body)).size(12.0)
+                                            )
+                                            .map(|_: ()| Message::Ignore)
+                                        ]
+                                    )
+                                    .width(Length::Fill),
+                                );
+                                (n.id, e)
+                            })
+                            .nth(nth)
+                            .unzip();
+
+                        let card_list = cosmic::widget::cards(
+                            app.notifications_id.clone(),
+                            notif_elems.into_iter().collect(),
+                            Message::Ignore,
+                            None::<fn(bool) -> Message>,
+                            Some(move |_| Message::ActivateNotification(ids.unwrap())),
+                            "",
+                            "",
+                            "",
+                            None,
+                            true,
+                        )
+                        .width(Length::Fixed(300.));
+
+                        Element::from(
+                            autosize::autosize(card_list, autosize_id.1.clone())
+                                .min_width(200.)
+                                .min_height(100.)
+                                .max_width(300.)
+                                .max_height(1920.),
+                        )
+                        .map(cosmic::Action::App)
+                    })),
+                ),
+            ));
+            let rad_xs = self.core.system_theme().cosmic().radius_xs();
+
+            tasks.push(
+                corner_radius(
+                    p_id,
+                    // TODO use the theme for this and the cards...
+                    Some(CornerRadius {
+                        top_left: rad_xs[0].round() as u32,
+                        top_right: rad_xs[1].round() as u32,
+                        bottom_left: rad_xs[2].round() as u32,
+                        bottom_right: rad_xs[3].round() as u32,
+                    }),
+                )
+                .discard(),
+            );
+        }
 
         iced::Task::batch(tasks)
     }
@@ -424,13 +669,13 @@ impl CosmicNotifications {
             };
             let tx = tx.clone();
             tracing::info!("action for {id} {action}");
-            Some(Task::future(async move {
+            return Some(Task::future(async move {
                 _ = tx
                     .send(notifications::Input::Activated { token, id, action })
                     .await;
                 tracing::trace!("sent action to sub");
                 cosmic::Action::App(Message::Dismissed(id))
-            }))
+            }));
         } else {
             tracing::error!("Failed to activate notification. No channel.");
             None
@@ -444,7 +689,10 @@ impl cosmic::Application for CosmicNotifications {
     type Flags = ();
     const APP_ID: &'static str = "com.system76.CosmicNotifications";
 
-    fn init(core: Core, _flags: ()) -> (Self, Task<Message>) {
+    fn init(mut core: Core, _flags: ()) -> (Self, Task<Message>) {
+        core.set_auto_blur(Auto::Popup | Auto::Window);
+        core.set_auto_corner_radius(BitFlags::empty());
+        core.set_app_type(cosmic::core::AppType::System);
         let helper = Config::new(
             cosmic_notifications_config::ID,
             NotificationsConfig::VERSION,
@@ -468,7 +716,6 @@ impl cosmic::Application for CosmicNotifications {
             CosmicNotifications {
                 core,
                 active_surface: false,
-                autosize_id: iced::id::Id::new("autosize"),
                 window_id: SurfaceId::unique(),
                 anchor: None,
                 config,
@@ -478,6 +725,7 @@ impl cosmic::Application for CosmicNotifications {
                 notifications_tx: None,
                 cards: Vec::with_capacity(50),
                 hidden: VecDeque::new(),
+                popups: Vec::with_capacity(3),
             },
             Task::none(),
         )
@@ -491,7 +739,7 @@ impl cosmic::Application for CosmicNotifications {
         &mut self.core
     }
 
-    fn view(&self) -> Element<'_, Self::Message> {
+    fn view(&self) -> Element<Self::Message> {
         unimplemented!();
     }
 
@@ -538,11 +786,13 @@ impl cosmic::Application for CosmicNotifications {
                 }
             }
             Message::Timeout(id) => {
-                self.expire(id);
+                let mut tasks = Vec::with_capacity(2);
+                tasks.push(self.expire(id));
                 if self.cards.is_empty() && self.active_surface {
                     self.active_surface = false;
-                    return destroy_layer_surface(self.window_id);
+                    tasks.push(destroy_layer_surface(self.window_id));
                 }
+                return Task::batch(tasks);
             }
             Message::Config(config) => {
                 self.config = config;
@@ -561,91 +811,50 @@ impl cosmic::Application for CosmicNotifications {
                     cosmic::app::Action::Surface(a),
                 ));
             }
+            Message::PopupSize(id, size) => {
+                let Some(p) = self.popups.iter_mut().find(|p| p.0 == id) else {
+                    return Task::none();
+                };
+                p.2 = Some(size);
+                let rad_xs = self.core.system_theme().cosmic().radius_xs();
+
+                return corner_radius(
+                    id,
+                    // TODO use the theme for this and the cards...
+                    Some(CornerRadius {
+                        top_left: rad_xs[0].round() as u32,
+                        top_right: rad_xs[1].round() as u32,
+                        bottom_left: rad_xs[2].round() as u32,
+                        bottom_right: rad_xs[3].round() as u32,
+                    }),
+                )
+                .discard();
+            }
         }
         Task::none()
     }
 
     #[allow(clippy::too_many_lines)]
-    fn view_window(&self, _: SurfaceId) -> Element<'_, Message> {
-        if self.cards.is_empty() {
-            return container(space::vertical().height(Length::Fixed(1.0)))
-                .center_x(Length::Fixed(1.0))
-                .center_y(Length::Fixed(1.0))
-                .into();
-        }
-
-        let (ids, notif_elems): (Vec<_>, Vec<_>) = self
-            .cards
-            .iter()
-            .rev()
-            .map(|n| {
-                let app_name = text::caption(if n.app_name.len() > 24 {
-                    Cow::from(format!(
-                        "{:.26}...",
-                        n.app_name.lines().next().unwrap_or_default()
-                    ))
-                } else {
-                    Cow::from(&n.app_name)
-                })
-                .width(Length::Fill);
-
-                let close_notif = button::custom(
-                    icon::from_name("window-close-symbolic")
-                        .size(16)
-                        .symbolic(true),
-                )
-                .on_press(Message::Dismissed(n.id))
-                .class(cosmic::theme::Button::Text);
-
-                let e = Element::from(
-                    column!(
-                        if let Some(icon) = n.notification_icon() {
-                            row![icon.size(16), app_name, close_notif]
-                                .spacing(8)
-                                .align_y(Alignment::Center)
-                        } else {
-                            row![app_name, close_notif]
-                                .spacing(8)
-                                .align_y(Alignment::Center)
-                        },
-                        column![
-                            text::body(n.summary.lines().next().unwrap_or_default())
-                                .width(Length::Fill),
-                            Element::from(rich_text(html_to_spans(&n.body)).size(12.0))
-                                .map(|_: ()| Message::Ignore)
-                        ]
-                    )
-                    .width(Length::Fill),
-                );
-                (n.id, e)
-            })
-            .take(self.config.max_notifications as usize)
-            .unzip();
-
-        let card_list = cosmic::widget::cards(
-            self.notifications_id.clone(),
-            notif_elems,
-            Message::Ignore,
-            None::<fn(bool) -> Message>,
-            Some(move |id| Message::ActivateNotification(ids[id])),
-            "",
-            "",
-            "",
-            None,
-            true,
-        )
-        .width(Length::Fixed(300.));
-
-        autosize::autosize(card_list, self.autosize_id.clone())
-            .min_width(200.)
-            .min_height(100.)
-            .max_width(300.)
-            .max_height(1920.)
+    fn view_window(&self, _: SurfaceId) -> Element<Message> {
+        // TODO how can we be sure to draw so that the radius is not to big?
+        // popups drawn here instead?
+        space::horizontal()
+            .width(Length::Fill)
+            .height(Length::Fixed(300.))
             .into()
     }
 
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch(vec![
+            listen_raw(|e, _, id| match e {
+                cosmic::iced::Event::Window(iced::window::Event::Opened { position: _, size }) => {
+                    Some(Message::PopupSize(id, size))
+                }
+                cosmic::iced::Event::Window(iced::window::Event::Resized(s)) => {
+                    Some(Message::PopupSize(id, s))
+                }
+                _ => None,
+            }),
             self.core
                 .watch_config(cosmic_notifications_config::ID)
                 .map(|u| {

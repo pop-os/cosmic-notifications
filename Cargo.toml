@@ -34,6 +34,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3.23", features = ["std", "env-filter"] }
 tracing-journald = { version = "0.3.2", optional = true }
 zbus = { version = "5.14.0", features = ["tokio", "p2p"] }
+enumflags2 = "0.7.12"
 
 [features]
 systemd = ["dep:tracing-journald"]
@@ -50,3 +51,9 @@ lto = "thin"
 # [patch.'https://github.com/pop-os/libcosmic']
 # libcosmic = { git = "https://github.com/pop-os/libcosmic//" }
 # cosmic-config = { git = "https://github.com/pop-os/libcosmic//" }
+# libcosmic = { git = "https://github.com/pop-os/libcosmic//", branch = "theme-v2" }
+# cosmic-config = { git = "https://github.com/pop-os/libcosmic//", branch = "theme-v2" }
+# cosmic-theme = { git = "https://github.com/pop-os/libcosmic//", branch = "theme-v2" }
+# libcosmic = { path = "../libcosmic" }
+# cosmic-config = { path = "../libcosmic/cosmic-config" }
+# cosmic-theme = { path = "../libcosmic/cosmic-theme" }
