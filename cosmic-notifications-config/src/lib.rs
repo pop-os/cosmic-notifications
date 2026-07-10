@@ -33,6 +33,8 @@ pub struct NotificationsConfig {
     pub max_timeout_normal: Option<u32>,
     /// Max time in milliseconds a low priority notification can be displayed before being removed.
     pub max_timeout_low: Option<u32>,
+    /// Notifications persist until dismissed.
+    pub persistence: bool,
 }
 
 impl Default for NotificationsConfig {
@@ -45,6 +47,7 @@ impl Default for NotificationsConfig {
             max_timeout_urgent: None,
             max_timeout_normal: Some(5000),
             max_timeout_low: Some(3000),
+            persistence: false,
         }
     }
 }
