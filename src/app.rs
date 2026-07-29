@@ -53,6 +53,7 @@ struct CosmicNotifications {
     core: Core,
     active_surface: bool,
     window_id: SurfaceId,
+    pending_notifications: Vec<Notification>,
     cards: Vec<Notification>,
     hidden: VecDeque<Notification>,
     notifications_id: id::Id,
@@ -270,6 +271,15 @@ impl CosmicNotifications {
         &mut self,
         notification: Notification,
     ) -> Task<<CosmicNotifications as cosmic::app::Application>::Message> {
+        if self
+            .popups
+            .iter()
+            .last()
+            .is_some_and(|(_, _, size)| size.is_none())
+        {
+            self.pending_notifications.push(notification);
+            return Task::none();
+        }
         let mut timeout = u32::try_from(notification.expire_timeout).unwrap_or(3000);
         let max_timeout = if notification.urgency() == 2 {
             self.config.max_timeout_urgent
@@ -723,6 +733,7 @@ impl cosmic::Application for CosmicNotifications {
                 panel_config: CosmicPanelConfig::default(),
                 notifications_id: id::Id::new("Notifications"),
                 notifications_tx: None,
+                pending_notifications: Vec::new(),
                 cards: Vec::with_capacity(50),
                 hidden: VecDeque::new(),
                 popups: Vec::with_capacity(3),
@@ -811,24 +822,36 @@ impl cosmic::Application for CosmicNotifications {
                     cosmic::app::Action::Surface(a),
                 ));
             }
-            Message::PopupSize(id, size) => {
+            Message::PopupSize(id, mut size) => {
                 let Some(p) = self.popups.iter_mut().find(|p| p.0 == id) else {
                     return Task::none();
                 };
+                size.width = size.width.max(1.);
+                size.height = size.height.max(1.);
                 p.2 = Some(size);
                 let rad_xs = self.core.system_theme().cosmic().radius_xs();
 
-                return corner_radius(
-                    id,
-                    // TODO use the theme for this and the cards...
-                    Some(CornerRadius {
-                        top_left: rad_xs[0].round() as u32,
-                        top_right: rad_xs[1].round() as u32,
-                        bottom_left: rad_xs[2].round() as u32,
-                        bottom_right: rad_xs[3].round() as u32,
-                    }),
-                )
-                .discard();
+                let pending = std::mem::take(&mut self.pending_notifications);
+
+                let mut tasks = Vec::with_capacity(self.pending_notifications.len() + 1);
+                tasks.push(
+                    corner_radius(
+                        id,
+                        // TODO use the theme for this and the cards...
+                        Some(CornerRadius {
+                            top_left: rad_xs[0].round() as u32,
+                            top_right: rad_xs[1].round() as u32,
+                            bottom_left: rad_xs[2].round() as u32,
+                            bottom_right: rad_xs[3].round() as u32,
+                        }),
+                    )
+                    .discard(),
+                );
+                for pending_notif in pending.into_iter().rev() {
+                    tasks.push(self.push_notification(pending_notif));
+                }
+
+                return Task::batch(tasks);
             }
         }
         Task::none()
