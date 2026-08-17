@@ -1,8 +1,10 @@
 use crate::subscriptions::notifications;
 use cosmic::app::{Core, Settings};
+use cosmic::cctk::wayland_client::protocol::wl_output::WlOutput;
 use cosmic::core::Auto;
 use cosmic::cosmic_config::{Config, CosmicConfigEntry};
 use cosmic::iced::event::listen_raw;
+use cosmic::iced::event::wayland::{Event as WaylandEvent, OutputEvent};
 use cosmic::iced::platform_specific::runtime::wayland::layer_surface::{
     IcedMargin, IcedOutput, SctkLayerSurfaceSettings,
 };
@@ -21,14 +23,14 @@ use cosmic::surface;
 use cosmic::surface::action::LiveSettings;
 use cosmic::widget::{autosize, button, icon, text};
 use cosmic::{Application, Element, app::Task};
-use cosmic_notifications_config::NotificationsConfig;
+use cosmic_notifications_config::{NotificationOutput, NotificationsConfig};
 use cosmic_notifications_util::markup::html_to_spans;
 use cosmic_notifications_util::{ActionId, CloseReason, Notification};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, PanelAnchor};
 use enumflags2::BitFlags;
 use iced::Alignment;
 use std::borrow::Cow;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -62,6 +64,7 @@ struct CosmicNotifications {
     dock_config: CosmicPanelConfig,
     panel_config: CosmicPanelConfig,
     anchor: Option<(Anchor, Option<String>)>,
+    outputs: HashMap<String, WlOutput>,
     popups: Vec<(SurfaceId, iced::id::Id, Option<iced::Size>)>,
 }
 
@@ -75,12 +78,35 @@ enum Message {
     Config(NotificationsConfig),
     PanelConfig(CosmicPanelConfig),
     DockConfig(CosmicPanelConfig),
+    Output(OutputEvent, WlOutput),
     Ignore,
     Surface(surface::Action<Message>),
     PopupSize(SurfaceId, iced::Size),
 }
 
 impl CosmicNotifications {
+    fn notification_output(&self) -> IcedOutput {
+        match self.config.output {
+            NotificationOutput::Active => IcedOutput::Active,
+            NotificationOutput::Applet => self
+                .anchor
+                .as_ref()
+                .and_then(|(_, output)| output.as_ref())
+                .and_then(|output| self.outputs.get(output))
+                .cloned()
+                .map(IcedOutput::Output)
+                .unwrap_or(IcedOutput::Active),
+        }
+    }
+
+    fn update_output(&mut self, output: WlOutput, name: Option<String>) {
+        self.outputs.retain(|_, current| current != &output);
+
+        if let Some(name) = name {
+            self.outputs.insert(name, output);
+        }
+    }
+
     fn expire(&mut self, i: u32) -> Task<Message> {
         let Some((c_pos, _)) = self.cards.iter().enumerate().find(|(_, n)| n.id == i) else {
             return Task::none();
@@ -316,7 +342,7 @@ impl CosmicNotifications {
                     left: 8,
                 },
                 size: Some((Some(300), Some(1))),
-                output: IcedOutput::Active, // TODO should we only create the notification on the output the applet is on?
+                output: self.notification_output(),
                 size_limits: Limits::NONE
                     .min_width(300.0)
                     .min_height(1.0)
@@ -728,6 +754,7 @@ impl cosmic::Application for CosmicNotifications {
                 active_surface: false,
                 window_id: SurfaceId::unique(),
                 anchor: None,
+                outputs: HashMap::new(),
                 config,
                 dock_config: CosmicPanelConfig::default(),
                 panel_config: CosmicPanelConfig::default(),
@@ -816,6 +843,17 @@ impl cosmic::Application for CosmicNotifications {
                 self.dock_config = c;
                 self.anchor = Some(self.anchor_for_notification_applet());
             }
+            Message::Output(event, output) => match event {
+                OutputEvent::Created(info) => {
+                    self.update_output(output, info.and_then(|info| info.name));
+                }
+                OutputEvent::InfoUpdate(info) => {
+                    self.update_output(output, info.name);
+                }
+                OutputEvent::Removed => {
+                    self.update_output(output, None);
+                }
+            },
             Message::Ignore => {}
             Message::Surface(a) => {
                 return cosmic::task::message(cosmic::Action::Surface(a));
@@ -874,6 +912,9 @@ impl cosmic::Application for CosmicNotifications {
                 cosmic::iced::Event::Window(iced::window::Event::Resized(s)) => {
                     Some(Message::PopupSize(id, s))
                 }
+                cosmic::iced::Event::PlatformSpecific(iced::event::PlatformSpecific::Wayland(
+                    WaylandEvent::Output(event, output),
+                )) => Some(Message::Output(event, output)),
                 _ => None,
             }),
             self.core
