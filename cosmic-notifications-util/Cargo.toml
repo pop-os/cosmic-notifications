@@ -11,7 +11,9 @@ zbus_notifications = ["image", "zbus"]
 image = ["fast_image_resize"]
 
 [dependencies]
-libcosmic = { git = "https://github.com/pop-os/libcosmic", default-features = false }
+libcosmic = { git = "https://github.com/pop-os/libcosmic", default-features = false, features = [
+    "desktop",
+] }
 serde = { version = "1.0", features = ["derive"] }
 zbus = { version = "5.14.0", optional = true }
 fast_image_resize = { version = "6.0.0", optional = true }
