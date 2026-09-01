@@ -5,11 +5,66 @@ pub use image::*;
 
 pub mod markup;
 
+use cosmic::desktop::fde;
 use cosmic::widget::{Icon, icon};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap, convert::Infallible, fmt, path::PathBuf, str::FromStr, time::SystemTime,
+    collections::HashMap,
+    convert::Infallible,
+    fmt,
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::OnceLock,
+    time::SystemTime,
 };
+
+/// Desktop entries of the system, loaded once and reused for `desktop-entry` lookups.
+fn desktop_entries() -> &'static [fde::DesktopEntry] {
+    static ENTRIES: OnceLock<Vec<fde::DesktopEntry>> = OnceLock::new();
+
+    ENTRIES.get_or_init(|| {
+        let locales = fde::get_languages_from_env();
+        fde::Iter::new(fde::default_paths())
+            .filter_map(|path| fde::DesktopEntry::from_path(path, Some(&locales)).ok())
+            .collect()
+    })
+}
+
+/// Value of the `Icon` key of the desktop entry with the given app id.
+fn desktop_entry_icon(app_id: &str) -> Option<String> {
+    fde::find_app_by_id(desktop_entries(), fde::unicase::Ascii::new(app_id))
+        .and_then(fde::DesktopEntry::icon)
+        .map(ToString::to_string)
+}
+
+/// The `image-path` hint is specified as a URI, but applications commonly pass a bare
+/// absolute path or a plain icon name instead. Accept all three.
+fn image_from_path_hint(value: String) -> Image {
+    if let Some(path) = url::Url::parse(&value)
+        .ok()
+        .and_then(|url| url.to_file_path().ok())
+    {
+        return Image::File(path);
+    }
+
+    let path = Path::new(&value);
+    if path.is_absolute() && path.exists() {
+        return Image::File(path.to_path_buf());
+    }
+
+    Image::Name(value)
+}
+
+/// The `app_icon` argument of `Notify`, the `image-path` hint and the `Icon` key of a
+/// desktop entry may each be either an icon name or an absolute path to an image file.
+fn icon_from_name_or_path(value: &str) -> Icon {
+    let path = Path::new(value);
+    if path.is_absolute() && path.exists() {
+        icon::from_path(path.to_path_buf()).icon()
+    } else {
+        icon::from_name(value).icon()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Notification {
@@ -42,7 +97,7 @@ impl Notification {
             .map(|a| (a[0].parse().unwrap(), a[1].to_string()))
             .collect();
 
-        let hints = hints
+        let hints: Vec<Hint> = hints
             .into_iter()
             .filter_map(|(k, v)| match k {
                 "action-icons" => bool::try_from(v).map(Hint::ActionIcons).ok(),
@@ -58,14 +113,9 @@ impl Notification {
                 "x" => i32::try_from(v).map(Hint::X).ok(),
                 "y" => i32::try_from(v).map(Hint::Y).ok(),
                 "urgency" => u8::try_from(v).map(Hint::Urgency).ok(),
-                "image-path" | "image_path" => String::try_from(v).ok().map(|s| {
-                    Hint::Image(
-                        url::Url::parse(&s)
-                            .ok()
-                            .and_then(|u| u.to_file_path().ok())
-                            .map_or(Image::Name(s), Image::File),
-                    )
-                }),
+                "image-path" | "image_path" => String::try_from(v)
+                    .ok()
+                    .map(|s| Hint::Image(image_from_path_hint(s))),
                 "image-data" | "image_data" | "icon_data" => match v {
                     zbus::zvariant::Value::Structure(v) => match ImageData::try_from(v) {
                         Ok(mut image) => Some({
@@ -93,10 +143,25 @@ impl Notification {
             })
             .collect();
 
+        // Applications that supply neither `app_icon` nor an image hint commonly
+        // identify themselves with the `desktop-entry` hint instead. Fall back to the
+        // `Icon` key of that desktop entry so those notifications are not left iconless.
+        let mut app_icon = app_icon.to_string();
+        if app_icon.is_empty()
+            && !hints.iter().any(|h| matches!(h, Hint::Image(_)))
+            && let Some(desktop_entry) = hints.iter().find_map(|h| match h {
+                Hint::DesktopEntry(s) => Some(s.as_str()),
+                _ => None,
+            })
+            && let Some(icon) = desktop_entry_icon(desktop_entry)
+        {
+            app_icon = icon;
+        }
+
         Notification {
             id,
             app_name: app_name.to_string(),
-            app_icon: app_icon.to_string(),
+            app_icon,
             summary: summary.to_string(),
             body: body.to_string(),
             actions,
@@ -159,8 +224,8 @@ impl Notification {
                     {
                         return Some(icon::from_path(path).icon());
                     }
-                    // Otherwise treat as icon name
-                    Some(icon::from_name(self.app_icon.as_str()).icon())
+                    // Otherwise treat as an icon name or an absolute path
+                    Some(icon_from_name_or_path(self.app_icon.as_str()))
                 } else {
                     None
                 }
