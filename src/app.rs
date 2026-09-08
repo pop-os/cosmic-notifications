@@ -17,7 +17,6 @@ use cosmic::iced::runtime::platform_specific::wayland::popup::{SctkPopupSettings
 use cosmic::iced::widget::{column, rich_text, row, space};
 use cosmic::iced::window::Id as SurfaceId;
 use cosmic::iced::{self, Length, Limits, Subscription, id};
-use cosmic::surface;
 use cosmic::surface::action::LiveSettings;
 use cosmic::widget::{autosize, button, icon, text};
 use cosmic::{Application, Element, app::Task};
@@ -76,7 +75,6 @@ enum Message {
     PanelConfig(CosmicPanelConfig),
     DockConfig(CosmicPanelConfig),
     Ignore,
-    Surface(surface::Action),
     PopupSize(SurfaceId, iced::Size),
 }
 
@@ -99,7 +97,7 @@ impl CosmicNotifications {
                 tasks.push(destroy_popup::<Message>(id).discard());
             }
         }
-        return Task::batch(tasks);
+        Task::batch(tasks)
     }
 
     fn close(&mut self, i: u32, reason: CloseReason) -> Option<Task<Message>> {
@@ -679,13 +677,13 @@ impl CosmicNotifications {
             };
             let tx = tx.clone();
             tracing::info!("action for {id} {action}");
-            return Some(Task::future(async move {
+            Some(Task::future(async move {
                 _ = tx
                     .send(notifications::Input::Activated { token, id, action })
                     .await;
                 tracing::trace!("sent action to sub");
                 cosmic::Action::App(Message::Dismissed(id))
-            }));
+            }))
         } else {
             tracing::error!("Failed to activate notification. No channel.");
             None
@@ -750,7 +748,7 @@ impl cosmic::Application for CosmicNotifications {
         &mut self.core
     }
 
-    fn view(&self) -> Element<Self::Message> {
+    fn view(&self) -> Element<'_, Self::Message> {
         unimplemented!();
     }
 
@@ -817,11 +815,6 @@ impl cosmic::Application for CosmicNotifications {
                 self.anchor = Some(self.anchor_for_notification_applet());
             }
             Message::Ignore => {}
-            Message::Surface(a) => {
-                return cosmic::task::message(cosmic::Action::Cosmic(
-                    cosmic::app::Action::Surface(a),
-                ));
-            }
             Message::PopupSize(id, mut size) => {
                 let Some(p) = self.popups.iter_mut().find(|p| p.0 == id) else {
                     return Task::none();
@@ -858,7 +851,7 @@ impl cosmic::Application for CosmicNotifications {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn view_window(&self, _: SurfaceId) -> Element<Message> {
+    fn view_window(&self, _: SurfaceId) -> Element<'_, Message> {
         // TODO how can we be sure to draw so that the radius is not to big?
         // popups drawn here instead?
         space::horizontal()
