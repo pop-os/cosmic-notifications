@@ -76,7 +76,7 @@ enum Message {
     PanelConfig(CosmicPanelConfig),
     DockConfig(CosmicPanelConfig),
     Ignore,
-    Surface(surface::Action),
+    Surface(surface::Action<Message>),
     PopupSize(SurfaceId, iced::Size),
 }
 
@@ -818,9 +818,7 @@ impl cosmic::Application for CosmicNotifications {
             }
             Message::Ignore => {}
             Message::Surface(a) => {
-                return cosmic::task::message(cosmic::Action::Cosmic(
-                    cosmic::app::Action::Surface(a),
-                ));
+                return cosmic::task::message(cosmic::Action::Surface(a));
             }
             Message::PopupSize(id, mut size) => {
                 let Some(p) = self.popups.iter_mut().find(|p| p.0 == id) else {
