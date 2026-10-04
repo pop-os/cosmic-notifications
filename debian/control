@@ -20,4 +20,5 @@ Architecture: amd64 arm64
 Depends:
   ${misc:Depends},
   ${shlibs:Depends}
+Provides: notification-daemon
 Description: Cosmic Notifications
