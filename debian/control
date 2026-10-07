@@ -8,7 +8,6 @@ Build-Depends:
   rustc (>=1.63),
   cargo,
   just,
-  intltool,
   libxkbcommon-dev,
   libwayland-dev,
   pkg-config,
