@@ -8,7 +8,6 @@ Build-Depends:
   rustc (>=1.63),
   cargo,
   just,
-  intltool,
   libxkbcommon-dev,
   libwayland-dev,
   pkg-config,
@@ -20,4 +19,5 @@ Architecture: amd64 arm64
 Depends:
   ${misc:Depends},
   ${shlibs:Depends}
+Provides: notification-daemon
 Description: Cosmic Notifications
