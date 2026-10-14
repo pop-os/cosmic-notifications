@@ -19,7 +19,7 @@ pub async fn setup_panel_conn(tx: Sender<Input>) -> Result<Connection> {
     let socket = setup_panel_socket()?;
     let guid = Guid::generate();
     let conn = tokio::time::timeout(
-        tokio::time::Duration::from_secs(1),
+        tokio::time::Duration::from_secs(10),
         Builder::socket(socket)
             .p2p()
             .server(guid)
