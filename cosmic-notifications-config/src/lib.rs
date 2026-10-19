@@ -18,17 +18,17 @@ pub enum Anchor {
     BottomRight,
 }
 
-/// Controls whether notifications are shown on top of fullscreen windows.
+/// Selects which notifications a setting applies to, by urgency.
 #[derive(
     Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
-pub enum FullscreenBehavior {
-    /// Never show notifications over fullscreen windows (default).
+pub enum UrgencyFilter {
+    /// No notifications (default).
     #[default]
     None,
-    /// Only show urgent (critical) notifications over fullscreen windows.
+    /// Only urgent (critical) notifications.
     UrgentOnly,
-    /// Show all notifications over fullscreen windows.
+    /// All notifications.
     All,
 }
 
@@ -37,6 +37,8 @@ pub enum FullscreenBehavior {
 pub struct NotificationsConfig {
     pub do_not_disturb: bool,
     pub anchor: Anchor,
+    /// Which notifications are shown over fullscreen windows.
+    pub show_over_fullscreen: UrgencyFilter,
     /// The maximum number of notifications that can be displayed at once.
     pub max_notifications: u32,
     /// The maximum number of notifications that can be displayed per app if not urgent and constrained by `max_notifications`.
@@ -47,8 +49,6 @@ pub struct NotificationsConfig {
     pub max_timeout_normal: Option<u32>,
     /// Max time in milliseconds a low priority notification can be displayed before being removed.
     pub max_timeout_low: Option<u32>,
-    /// Whether (and which) notifications are shown over fullscreen windows.
-    pub show_over_fullscreen: FullscreenBehavior,
 }
 
 impl Default for NotificationsConfig {
@@ -56,12 +56,12 @@ impl Default for NotificationsConfig {
         Self {
             do_not_disturb: false,
             anchor: Anchor::default(),
+            show_over_fullscreen: UrgencyFilter::default(),
             max_notifications: 3,
             max_per_app: 2,
             max_timeout_urgent: None,
             max_timeout_normal: Some(5000),
             max_timeout_low: Some(3000),
-            show_over_fullscreen: FullscreenBehavior::default(),
         }
     }
 }

@@ -23,7 +23,7 @@ use cosmic::surface;
 use cosmic::surface::action::LiveSettings;
 use cosmic::widget::{autosize, button, icon, text};
 use cosmic::{Application, Element, app::Task};
-use cosmic_notifications_config::{FullscreenBehavior, NotificationsConfig};
+use cosmic_notifications_config::{NotificationsConfig, UrgencyFilter};
 use cosmic_notifications_util::markup::html_to_spans;
 use cosmic_notifications_util::{ActionId, CloseReason, Notification};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, PanelAnchor};
@@ -271,11 +271,11 @@ impl CosmicNotifications {
     /// is hidden by them.
     fn card_layer(&self, notification: &Notification) -> Layer {
         match self.config.show_over_fullscreen {
-            FullscreenBehavior::None => Layer::Top,
-            FullscreenBehavior::All => Layer::Overlay,
+            UrgencyFilter::None => Layer::Top,
+            UrgencyFilter::All => Layer::Overlay,
             // urgency 2 == critical
-            FullscreenBehavior::UrgentOnly if notification.urgency() >= 2 => Layer::Overlay,
-            FullscreenBehavior::UrgentOnly => Layer::Top,
+            UrgencyFilter::UrgentOnly if notification.urgency() >= 2 => Layer::Overlay,
+            UrgencyFilter::UrgentOnly => Layer::Top,
         }
     }
 
