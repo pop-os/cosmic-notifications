@@ -18,11 +18,27 @@ pub enum Anchor {
     BottomRight,
 }
 
+/// Selects which notifications a setting applies to, by urgency.
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
+pub enum UrgencyFilter {
+    /// No notifications (default).
+    #[default]
+    None,
+    /// Only urgent (critical) notifications.
+    UrgentOnly,
+    /// All notifications.
+    All,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, CosmicConfigEntry)]
 #[version = 1]
 pub struct NotificationsConfig {
     pub do_not_disturb: bool,
     pub anchor: Anchor,
+    /// Which notifications are shown over fullscreen windows.
+    pub show_over_fullscreen: UrgencyFilter,
     /// The maximum number of notifications that can be displayed at once.
     pub max_notifications: u32,
     /// The maximum number of notifications that can be displayed per app if not urgent and constrained by `max_notifications`.
@@ -40,6 +56,7 @@ impl Default for NotificationsConfig {
         Self {
             do_not_disturb: false,
             anchor: Anchor::default(),
+            show_over_fullscreen: UrgencyFilter::default(),
             max_notifications: 3,
             max_per_app: 2,
             max_timeout_urgent: None,
