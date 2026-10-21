@@ -1,3 +1,6 @@
+// D-Bus signal signatures mirror the org.freedesktop.Notifications spec.
+#![allow(clippy::too_many_arguments)]
+
 use std::{
     collections::HashMap,
     os::fd::{BorrowedFd, IntoRawFd, RawFd},
