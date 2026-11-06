@@ -1,12 +1,14 @@
 use std::{
     collections::HashMap,
-    os::fd::{BorrowedFd, IntoRawFd, RawFd},
+    os::{
+        fd::{BorrowedFd, IntoRawFd, RawFd},
+        unix::net::UnixStream,
+    },
 };
-use tokio::{net::UnixStream, sync::mpsc::Sender};
+use tokio::sync::mpsc::Sender;
 use tracing::{error, info};
 use zbus::{
-    Connection, Guid, connection::Builder, interface, object_server::SignalEmitter,
-    zvariant::OwnedFd,
+    Connection, Guid, OwnedFd, connection::Builder, interface, object_server::SignalEmitter,
 };
 
 use super::notifications::Input;
@@ -20,14 +22,13 @@ pub async fn setup_panel_conn(tx: Sender<Input>) -> Result<Connection> {
     let guid = Guid::generate();
     let conn = tokio::time::timeout(
         tokio::time::Duration::from_secs(10),
-        Builder::socket(socket)
+        Builder::unix_stream(socket)
             .p2p()
             .server(guid)
-            .unwrap()
             .serve_at(
                 "/com/system76/NotificationsSocket",
                 NotificationsSocket { tx },
-            )?
+            )
             .build(),
     )
     .await??;
@@ -60,7 +61,7 @@ pub fn setup_panel_socket() -> Result<UnixStream> {
     let unix_stream = std::os::unix::net::UnixStream::from(fd);
     unix_stream.set_nonblocking(true)?;
 
-    Ok(UnixStream::from_std(unix_stream)?)
+    Ok(unix_stream)
 }
 
 pub struct NotificationsSocket {
@@ -78,25 +79,17 @@ impl NotificationsSocket {
         theirs
             .set_nonblocking(true)
             .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
-        let mine: UnixStream =
-            UnixStream::from_std(mine).map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
 
         let guid = Guid::generate();
 
         let tx_clone = self.tx.clone();
         tokio::spawn(async move {
-            let conn = match Builder::socket(mine).p2p().server(guid).unwrap().serve_at(
+            let conn = Builder::unix_stream(mine).p2p().server(guid).serve_at(
                 "/com/system76/NotificationsApplet",
                 NotificationsApplet {
                     tx: tx_clone.clone(),
                 },
-            ) {
-                Ok(conn) => conn,
-                Err(err) => {
-                    error!("Failed to create applet connection {}", err);
-                    return;
-                }
-            };
+            );
 
             info!("Creating applet connection");
             let conn = match conn.build().await {
