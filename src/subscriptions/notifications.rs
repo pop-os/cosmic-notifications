@@ -39,26 +39,21 @@ impl Conns {
         };
 
         for _ in 0..5 {
-            if let Some(conn) = ConnectionBuilder::session()
-                .ok()
-                .and_then(|conn| conn.name("org.freedesktop.Notifications").ok())
-                .and_then(|conn| {
-                    conn.serve_at(
-                        "/org/freedesktop/Notifications",
-                        Notifications(tx.clone(), NonZeroU32::new(1).unwrap(), Vec::new()),
-                    )
-                    .ok()
-                })
-                .map(ConnectionBuilder::build)
+            if let Ok(conn) = ConnectionBuilder::session()
+                .name("org.freedesktop.Notifications")
+                .serve_at(
+                    "/org/freedesktop/Notifications",
+                    Notifications(tx.clone(), NonZeroU32::new(1).unwrap(), Vec::new()),
+                )
+                .build()
+                .await
             {
-                if let Ok(conn) = conn.await {
-                    return Ok(Self {
-                        tx,
-                        notifications: conn,
-                        rx,
-                        _panel: panel,
-                    });
-                }
+                return Ok(Self {
+                    tx,
+                    notifications: conn,
+                    rx,
+                    _panel: panel,
+                });
             } else {
                 error!("Failed to create connection at /org/freedesktop/Notifications");
                 tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
